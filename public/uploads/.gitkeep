@@ -1,0 +1,21 @@
+# Uploads Directory
+
+This directory stores user-uploaded files.
+
+## Security Notes
+
+1. Never allow direct PHP execution in this directory
+2. Validate file types before upload
+3. Rename uploaded files to prevent overwrites
+4. Set proper permissions (755 or 644)
+5. Consider moving to cloud storage for production
+
+## .htaccess
+
+Add this to prevent PHP execution:
+
+```apache
+<Files *.php>
+    deny from all
+</Files>
+```

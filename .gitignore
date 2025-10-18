@@ -1,0 +1,29 @@
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Dependencies
+vendor/
+node_modules/
+
+# Cache
+cache/
+*.cache
+
+# Temporary files
+tmp/
+temp/
+*.tmp

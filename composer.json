@@ -1,0 +1,27 @@
+{
+    "name": "native-mvc/framework",
+    "description": "Zero-refresh PHP MVC framework with jQuery & AJAX",
+    "type": "project",
+    "keywords": ["php", "mvc", "ajax", "spa", "framework", "zero-refresh"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Native MVC Team"
+        }
+    ],
+    "require": {
+        "php": ">=7.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
