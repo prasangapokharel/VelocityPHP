@@ -1,5 +1,6 @@
--- Native MVC Database Schema
+-- VelocityPHP Database Schema
 -- Sample tables for getting started
+-- Database: native
 
 -- Users Table
 CREATE TABLE IF NOT EXISTS `users` (
@@ -94,7 +95,7 @@ INSERT INTO `categories` (`name`, `slug`, `description`) VALUES
 ('Business', 'business', 'Business and entrepreneurship');
 
 INSERT INTO `posts` (`user_id`, `title`, `slug`, `content`, `excerpt`, `status`) VALUES
-(1, 'Welcome to Native MVC', 'welcome-to-native-mvc', 'This is a sample blog post demonstrating the power of Native MVC framework...', 'Introduction to Native MVC framework', 'published'),
+(1, 'Welcome to VelocityPHP', 'welcome-to-velocityphp', 'This is a sample blog post demonstrating the power of VelocityPHP framework...', 'Introduction to VelocityPHP framework', 'published'),
 (1, 'Building SPAs with PHP', 'building-spas-with-php', 'Learn how to build Single Page Applications using PHP and AJAX...', 'SPA development with PHP', 'published'),
 (2, 'Zero-Refresh Navigation', 'zero-refresh-navigation', 'Discover how zero-refresh navigation enhances user experience...', 'Guide to zero-refresh apps', 'published');
 

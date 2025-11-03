@@ -1,16 +1,20 @@
 <?php
 /**
- * Base Controller
- * Provides common controller functionality and helpers
+ * VelocityPhp Base Controller
+ * Provides common controller functionality and optimized helpers
  * 
- * @package NativeMVC
+ * @package VelocityPhp
+ * @version 1.0.0
  */
 
 namespace App\Controllers;
 
+use App\Utils\VelocityCache;
+
 abstract class BaseController
 {
     protected $data = [];
+    protected $modelName = null;
     
     /**
      * Return JSON response
@@ -79,7 +83,7 @@ abstract class BaseController
         
         return [
             'html' => $html,
-            'title' => $title ?: 'Native MVC App',
+            'title' => $title ?: 'VelocityPhp',
             'meta' => []
         ];
     }
@@ -183,15 +187,28 @@ abstract class BaseController
     }
     
     /**
-     * Get POST data
+     * Get POST data (handles both form-data and JSON)
      */
     protected function post($key = null, $default = null)
     {
-        if ($key === null) {
-            return $_POST;
+        // Check if we already parsed JSON data
+        static $jsonData = null;
+        
+        // If Content-Type is application/json, parse from php://input
+        $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+        if (strpos($contentType, 'application/json') !== false && $jsonData === null) {
+            $input = file_get_contents('php://input');
+            $jsonData = json_decode($input, true) ?? [];
         }
         
-        return $_POST[$key] ?? $default;
+        // Use JSON data if available, otherwise use $_POST
+        $data = $jsonData !== null ? $jsonData : $_POST;
+        
+        if ($key === null) {
+            return $data;
+        }
+        
+        return $data[$key] ?? $default;
     }
     
     /**
@@ -232,5 +249,54 @@ abstract class BaseController
         }
         
         return htmlspecialchars(strip_tags($data), ENT_QUOTES, 'UTF-8');
+    }
+    
+    /**
+     * Automatically invalidate cache for a resource
+     * Called automatically on create/update/delete operations
+     * 
+     * @param string $resourceName Resource name (e.g., 'users', 'products')
+     * @param mixed $resourceId Resource ID (optional, for specific resource cache)
+     */
+    protected function invalidateCache($resourceName, $resourceId = null)
+    {
+        $cache = VelocityCache::getInstance();
+        
+        if (!$cache->isEnabled()) {
+            return;
+        }
+        
+        $patterns = [
+            "GET:/api/{$resourceName}*",
+            "GET:/{$resourceName}*"
+        ];
+        
+        foreach ($patterns as $pattern) {
+            $cache->forgetPattern($pattern);
+        }
+        
+        if ($resourceId !== null) {
+            $cache->forget("GET:/api/{$resourceName}/{$resourceId}");
+            $cache->forget("GET:/{$resourceName}/{$resourceId}");
+        }
+    }
+    
+    /**
+     * Set model name for automatic cache invalidation
+     * Override this in child controllers to enable auto cache management
+     * 
+     * @return string|null Model/resource name
+     */
+    protected function getModelName()
+    {
+        if ($this->modelName) {
+            return $this->modelName;
+        }
+        
+        $className = get_class($this);
+        $className = str_replace('Controller', '', $className);
+        $className = str_replace('App\\Controllers\\', '', $className);
+        
+        return strtolower($className);
     }
 }

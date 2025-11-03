@@ -3,7 +3,7 @@
  * Home Controller
  * Handles requests for the home page
  * 
- * @package NativeMVC
+ * @package VelocityPhp
  */
 
 namespace App\Controllers;
@@ -16,19 +16,23 @@ class HomeController extends BaseController
     public function index($params, $isAjax)
     {
         if ($isAjax) {
-            return $this->view('index/index', [], 'Home - Native MVC');
+            return $this->view('index/index', [], 'Home - VelocityPhp');
         }
         
-        // For non-AJAX, the router handles full page rendering
+        // For non-AJAX (refresh), the router handles full page rendering
         return null;
     }
-
-    public function login ($params, $isAjax) {
+    
+    /**
+     * Display about page
+     */
+    public function about($params, $isAjax)
+    {
         if ($isAjax) {
-            return $this->view('index/login', [], 'Login - Native MVC');
+            return $this->view('about/index', [], 'About - VelocityPhp');
         }
         
-        // For non-AJAX, the router handles full page rendering
+        // For non-AJAX (refresh), the router handles full page rendering
         return null;
     }
 }

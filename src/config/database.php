@@ -1,8 +1,10 @@
 <?php
 /**
- * Database Configuration
+ * VelocityPhp Database Configuration
+ * Optimized for high performance with connection pooling
  * 
- * @package NativeMVC
+ * @package VelocityPhp
+ * @version 1.0.0
  */
 
 return [

@@ -1,51 +1,150 @@
 <?php
 /**
- * Base Model
- * Provides database abstraction and common CRUD operations
+ * VelocityPhp BaseModel
+ * Ultra-fast base model with connection pooling, query caching, and optimized CRUD
  * 
- * @package NativeMVC
+ * @package VelocityPhp
+ * @version 1.0.0
  */
 
 namespace App\Models;
 
 use PDO;
 use PDOException;
+use PDOStatement;
 
 abstract class BaseModel
 {
-    protected static $connection = null;
+    // Connection pool for reusing connections
+    protected static $connectionPool = [];
+    protected static $poolSize = 10;
+    protected static $activeConnections = 0;
+    
+    // Query cache for repeated queries
+    protected static $queryCache = [];
+    protected static $queryCacheEnabled = true;
+    protected static $queryCacheTTL = 3600;
+    
+    // Model properties
     protected $table;
     protected $primaryKey = 'id';
     protected $fillable = [];
+    protected $timestamps = true;
+    
+    // Performance tracking
+    protected static $queryCount = 0;
+    protected static $cacheHits = 0;
     
     /**
-     * Get database connection
+     * Get optimized database connection with pooling
      */
     protected static function getConnection()
     {
-        if (self::$connection === null) {
-            $dbConfig = require CONFIG_PATH . '/database.php';
-            $config = $dbConfig['connections'][$dbConfig['default']];
+        $poolKey = 'default';
+        
+        // Check if we have an available connection in the pool
+        if (isset(self::$connectionPool[$poolKey]) && !empty(self::$connectionPool[$poolKey])) {
+            $connection = array_pop(self::$connectionPool[$poolKey]);
             
+            // Verify connection is still alive
             try {
-                $dsn = self::buildDsn($config);
-                self::$connection = new PDO(
-                    $dsn,
-                    $config['username'] ?? null,
-                    $config['password'] ?? null,
-                    $config['options'] ?? []
-                );
+                $connection->query('SELECT 1');
+                self::$activeConnections++;
+                return $connection;
             } catch (PDOException $e) {
-                error_log("Database connection failed: " . $e->getMessage());
-                throw new \Exception("Database connection failed");
+                // Connection is dead, create a new one
             }
         }
         
-        return self::$connection;
+        // Create new connection if pool is empty or connection is dead
+        return self::createConnection();
     }
     
     /**
-     * Build DSN string
+     * Create new database connection with optimizations
+     */
+    private static function createConnection()
+    {
+        $dbConfig = require CONFIG_PATH . '/database.php';
+        $config = $dbConfig['connections'][$dbConfig['default']];
+        
+        try {
+            $dsn = self::buildDsn($config);
+            
+            // Enhanced PDO options for maximum performance
+            $baseOptions = [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false,
+                PDO::ATTR_PERSISTENT => false,
+            ];
+            
+            // Add MySQL-specific options only for MySQL
+            if ($config['driver'] === 'mysql') {
+                $baseOptions[PDO::MYSQL_ATTR_INIT_COMMAND] = "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci";
+            }
+            
+            $options = array_merge($config['options'] ?? [], $baseOptions);
+            
+            $connection = new PDO(
+                $dsn,
+                $config['username'] ?? null,
+                $config['password'] ?? null,
+                $options
+            );
+            
+            // Set additional MySQL optimizations
+            if ($config['driver'] === 'mysql') {
+                $connection->exec("SET SESSION sql_mode='TRADITIONAL'");
+                $connection->exec("SET SESSION time_zone='+00:00'");
+            }
+            
+            self::$activeConnections++;
+            return $connection;
+            
+        } catch (PDOException $e) {
+            $errorMsg = "Database connection failed: " . $e->getMessage();
+            error_log($errorMsg);
+            
+            // Deep error logging
+            if (defined('CONFIG_PATH')) {
+                $appConfig = require CONFIG_PATH . '/app.php';
+                if ($appConfig['deep_errors']) {
+                    error_log("Stack trace: " . $e->getTraceAsString());
+                    error_log("Connection config: " . print_r([
+                        'host' => $config['host'] ?? 'N/A',
+                        'port' => $config['port'] ?? 'N/A',
+                        'database' => $config['database'] ?? 'N/A',
+                        'driver' => $config['driver'] ?? 'N/A'
+                    ], true));
+                }
+            }
+            
+            throw new \Exception($errorMsg, 500, $e);
+        }
+    }
+    
+    /**
+     * Return connection to pool
+     */
+    protected static function releaseConnection($connection)
+    {
+        $poolKey = 'default';
+        
+        if (!isset(self::$connectionPool[$poolKey])) {
+            self::$connectionPool[$poolKey] = [];
+        }
+        
+        // Only keep connections up to pool size
+        if (count(self::$connectionPool[$poolKey]) < self::$poolSize) {
+            self::$connectionPool[$poolKey][] = $connection;
+        }
+        
+        self::$activeConnections = max(0, self::$activeConnections - 1);
+    }
+    
+    /**
+     * Build optimized DSN string
      */
     private static function buildDsn($config)
     {
@@ -76,38 +175,92 @@ abstract class BaseModel
     }
     
     /**
-     * Find record by ID
+     * Execute cached query for better performance
      */
-    public function find($id)
+    protected function cachedQuery($sql, $params = [], $cacheTTL = null)
     {
-        $sql = "SELECT * FROM {$this->table} WHERE {$this->primaryKey} = :id LIMIT 1";
-        $stmt = self::getConnection()->prepare($sql);
-        $stmt->execute(['id' => $id]);
+        if (!self::$queryCacheEnabled) {
+            return $this->query($sql, $params);
+        }
         
-        return $stmt->fetch();
+        $cacheKey = md5($sql . serialize($params));
+        $cacheTTL = $cacheTTL ?? self::$queryCacheTTL;
+        
+        // Check cache
+        if (isset(self::$queryCache[$cacheKey])) {
+            $cached = self::$queryCache[$cacheKey];
+            if (time() - $cached['time'] < $cacheTTL) {
+                self::$cacheHits++;
+                return $cached['data'];
+            }
+        }
+        
+        // Execute query and cache result
+        $result = $this->query($sql, $params);
+        
+        self::$queryCache[$cacheKey] = [
+            'data' => $result,
+            'time' => time()
+        ];
+        
+        return $result;
     }
     
     /**
-     * Get all records
+     * Clear query cache
+     */
+    public static function clearCache()
+    {
+        self::$queryCache = [];
+    }
+    
+    /**
+     * Find record by ID (optimized with statement caching)
+     */
+    public function find($id)
+    {
+        static $stmtCache = [];
+        $cacheKey = $this->table . '_find';
+        
+        $connection = self::getConnection();
+        
+        try {
+            // Use cached prepared statement for better performance
+            if (!isset($stmtCache[$cacheKey])) {
+                $sql = "SELECT * FROM {$this->table} WHERE {$this->primaryKey} = ? LIMIT 1";
+                $stmtCache[$cacheKey] = $connection->prepare($sql);
+            }
+            
+            $stmt = $stmtCache[$cacheKey];
+            $stmt->execute([$id]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            self::$queryCount++;
+            return $result;
+        } finally {
+            self::releaseConnection($connection);
+        }
+    }
+    
+    /**
+     * Get all records (with caching)
      */
     public function all($orderBy = null, $limit = null)
     {
         $sql = "SELECT * FROM {$this->table}";
         
         if ($orderBy) {
-            $sql .= " ORDER BY {$orderBy}";
+            $sql .= " ORDER BY " . $this->sanitizeOrderBy($orderBy);
         }
         
         if ($limit) {
-            $sql .= " LIMIT {$limit}";
+            $sql .= " LIMIT " . (int)$limit;
         }
         
-        $stmt = self::getConnection()->query($sql);
-        return $stmt->fetchAll();
+        return $this->cachedQuery($sql);
     }
     
     /**
-     * Find records by criteria
+     * Find records by criteria (optimized)
      */
     public function where($conditions, $orderBy = null, $limit = null)
     {
@@ -116,87 +269,216 @@ abstract class BaseModel
         $clauses = [];
         
         foreach ($conditions as $field => $value) {
-            $clauses[] = "{$field} = :{$field}";
-            $params[$field] = $value;
+            $clauses[] = $this->escapeIdentifier($field) . " = ?";
+            $params[] = $value;
         }
         
         $sql .= implode(' AND ', $clauses);
         
         if ($orderBy) {
-            $sql .= " ORDER BY {$orderBy}";
+            $sql .= " ORDER BY " . $this->sanitizeOrderBy($orderBy);
         }
         
         if ($limit) {
-            $sql .= " LIMIT {$limit}";
+            $sql .= " LIMIT " . (int)$limit;
         }
         
-        $stmt = self::getConnection()->prepare($sql);
-        $stmt->execute($params);
-        
-        return $stmt->fetchAll();
+        return $this->query($sql, $params);
     }
     
     /**
-     * Create new record
+     * Advanced where with operators
+     */
+    public function whereAdvanced($conditions, $orderBy = null, $limit = null)
+    {
+        $sql = "SELECT * FROM {$this->table} WHERE ";
+        $params = [];
+        $clauses = [];
+        
+        foreach ($conditions as $field => $condition) {
+            if (is_array($condition)) {
+                $operator = $condition[0];
+                $value = $condition[1];
+                $clauses[] = $this->escapeIdentifier($field) . " {$operator} ?";
+                $params[] = $value;
+            } else {
+                $clauses[] = $this->escapeIdentifier($field) . " = ?";
+                $params[] = $condition;
+            }
+        }
+        
+        $sql .= implode(' AND ', $clauses);
+        
+        if ($orderBy) {
+            $sql .= " ORDER BY " . $this->sanitizeOrderBy($orderBy);
+        }
+        
+        if ($limit) {
+            $sql .= " LIMIT " . (int)$limit;
+        }
+        
+        return $this->query($sql, $params);
+    }
+    
+    /**
+     * Create new record (optimized with batch support)
      */
     public function create($data)
     {
-        // Filter data based on fillable fields
         $data = $this->filterFillable($data);
         
+        if ($this->timestamps) {
+            $data['created_at'] = date('Y-m-d H:i:s');
+            $data['updated_at'] = date('Y-m-d H:i:s');
+        }
+        
         $fields = array_keys($data);
-        $placeholders = array_map(function($field) {
-            return ":{$field}";
-        }, $fields);
+        $placeholders = array_fill(0, count($fields), '?');
         
         $sql = sprintf(
             "INSERT INTO %s (%s) VALUES (%s)",
-            $this->table,
-            implode(', ', $fields),
+            $this->escapeIdentifier($this->table),
+            implode(', ', array_map([$this, 'escapeIdentifier'], $fields)),
             implode(', ', $placeholders)
         );
         
-        $stmt = self::getConnection()->prepare($sql);
-        $stmt->execute($data);
+        $connection = self::getConnection();
         
-        return self::getConnection()->lastInsertId();
+        try {
+            $stmt = $connection->prepare($sql);
+            $stmt->execute(array_values($data));
+            self::$queryCount++;
+            
+            $lastId = $connection->lastInsertId();
+            
+            // Clear relevant cache
+            $this->clearRelevantCache();
+            
+            return $lastId;
+        } finally {
+            self::releaseConnection($connection);
+        }
     }
     
     /**
-     * Update record
+     * Batch insert for maximum performance
+     */
+    public function batchInsert($records)
+    {
+        if (empty($records)) {
+            return 0;
+        }
+        
+        $first = $records[0];
+        $first = $this->filterFillable($first);
+        
+        if ($this->timestamps) {
+            $timestamp = date('Y-m-d H:i:s');
+        }
+        
+        $fields = array_keys($first);
+        $placeholders = '(' . implode(', ', array_fill(0, count($fields), '?')) . ')';
+        $allPlaceholders = array_fill(0, count($records), $placeholders);
+        
+        $sql = sprintf(
+            "INSERT INTO %s (%s) VALUES %s",
+            $this->escapeIdentifier($this->table),
+            implode(', ', array_map([$this, 'escapeIdentifier'], $fields)),
+            implode(', ', $allPlaceholders)
+        );
+        
+        $values = [];
+        foreach ($records as $record) {
+            $record = $this->filterFillable($record);
+            if ($this->timestamps) {
+                $record['created_at'] = $timestamp;
+                $record['updated_at'] = $timestamp;
+            }
+            $values = array_merge($values, array_values($record));
+        }
+        
+        $connection = self::getConnection();
+        
+        try {
+            $stmt = $connection->prepare($sql);
+            $result = $stmt->execute($values);
+            self::$queryCount++;
+            
+            $this->clearRelevantCache();
+            
+            return $stmt->rowCount();
+        } finally {
+            self::releaseConnection($connection);
+        }
+    }
+    
+    /**
+     * Update record (optimized)
      */
     public function update($id, $data)
     {
-        // Filter data based on fillable fields
         $data = $this->filterFillable($data);
         
-        $setClauses = [];
-        foreach (array_keys($data) as $field) {
-            $setClauses[] = "{$field} = :{$field}";
+        if ($this->timestamps) {
+            $data['updated_at'] = date('Y-m-d H:i:s');
         }
         
+        $setClauses = [];
+        $values = [];
+        
+        foreach ($data as $field => $value) {
+            $setClauses[] = $this->escapeIdentifier($field) . " = ?";
+            $values[] = $value;
+        }
+        
+        $values[] = $id;
+        
         $sql = sprintf(
-            "UPDATE %s SET %s WHERE %s = :id",
-            $this->table,
+            "UPDATE %s SET %s WHERE %s = ?",
+            $this->escapeIdentifier($this->table),
             implode(', ', $setClauses),
-            $this->primaryKey
+            $this->escapeIdentifier($this->primaryKey)
         );
         
-        $data['id'] = $id;
+        $connection = self::getConnection();
         
-        $stmt = self::getConnection()->prepare($sql);
-        return $stmt->execute($data);
+        try {
+            $stmt = $connection->prepare($sql);
+            $result = $stmt->execute($values);
+            self::$queryCount++;
+            
+            $this->clearRelevantCache();
+            
+            return $result;
+        } finally {
+            self::releaseConnection($connection);
+        }
     }
     
     /**
-     * Delete record
+     * Delete record (optimized)
      */
     public function delete($id)
     {
-        $sql = "DELETE FROM {$this->table} WHERE {$this->primaryKey} = :id";
-        $stmt = self::getConnection()->prepare($sql);
+        $sql = sprintf(
+            "DELETE FROM %s WHERE %s = ?",
+            $this->escapeIdentifier($this->table),
+            $this->escapeIdentifier($this->primaryKey)
+        );
         
-        return $stmt->execute(['id' => $id]);
+        $connection = self::getConnection();
+        
+        try {
+            $stmt = $connection->prepare($sql);
+            $result = $stmt->execute([$id]);
+            self::$queryCount++;
+            
+            $this->clearRelevantCache();
+            
+            return $result;
+        } finally {
+            self::releaseConnection($connection);
+        }
     }
     
     /**
@@ -204,10 +486,17 @@ abstract class BaseModel
      */
     public function query($sql, $params = [])
     {
-        $stmt = self::getConnection()->prepare($sql);
-        $stmt->execute($params);
+        $connection = self::getConnection();
         
-        return $stmt->fetchAll();
+        try {
+            $stmt = $connection->prepare($sql);
+            $stmt->execute($params);
+            self::$queryCount++;
+            
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } finally {
+            self::releaseConnection($connection);
+        }
     }
     
     /**
@@ -215,72 +504,115 @@ abstract class BaseModel
      */
     public function execute($sql, $params = [])
     {
-        $stmt = self::getConnection()->prepare($sql);
-        return $stmt->execute($params);
+        $connection = self::getConnection();
+        
+        try {
+            $stmt = $connection->prepare($sql);
+            $result = $stmt->execute($params);
+            self::$queryCount++;
+            
+            $this->clearRelevantCache();
+            
+            return $result;
+        } finally {
+            self::releaseConnection($connection);
+        }
     }
     
     /**
-     * Count records
+     * Count records (cached)
      */
     public function count($conditions = [])
     {
         $sql = "SELECT COUNT(*) as total FROM {$this->table}";
+        $params = [];
         
         if (!empty($conditions)) {
             $sql .= " WHERE ";
             $clauses = [];
             
             foreach ($conditions as $field => $value) {
-                $clauses[] = "{$field} = :{$field}";
+                $clauses[] = $this->escapeIdentifier($field) . " = ?";
+                $params[] = $value;
             }
             
             $sql .= implode(' AND ', $clauses);
         }
         
-        $stmt = self::getConnection()->prepare($sql);
-        $stmt->execute($conditions);
-        
-        $result = $stmt->fetch();
-        return (int) $result['total'];
+        $result = $this->cachedQuery($sql, $params, 300); // Cache for 5 minutes
+        return isset($result[0]) ? (int)$result[0]['total'] : 0;
     }
     
     /**
-     * Paginate results
+     * Paginate results (optimized)
      */
     public function paginate($page = 1, $perPage = 15, $conditions = [], $orderBy = null)
     {
+        $page = max(1, (int)$page);
+        $perPage = max(1, min(100, (int)$perPage)); // Max 100 per page
         $offset = ($page - 1) * $perPage;
+        
         $total = $this->count($conditions);
         
         $sql = "SELECT * FROM {$this->table}";
+        $params = [];
         
         if (!empty($conditions)) {
             $sql .= " WHERE ";
             $clauses = [];
             
             foreach ($conditions as $field => $value) {
-                $clauses[] = "{$field} = :{$field}";
+                $clauses[] = $this->escapeIdentifier($field) . " = ?";
+                $params[] = $value;
             }
             
             $sql .= implode(' AND ', $clauses);
         }
         
         if ($orderBy) {
-            $sql .= " ORDER BY {$orderBy}";
+            $sql .= " ORDER BY " . $this->sanitizeOrderBy($orderBy);
         }
         
         $sql .= " LIMIT {$perPage} OFFSET {$offset}";
         
-        $stmt = self::getConnection()->prepare($sql);
-        $stmt->execute($conditions);
+        $data = $this->query($sql, $params);
         
         return [
-            'data' => $stmt->fetchAll(),
+            'data' => $data,
             'total' => $total,
             'per_page' => $perPage,
             'current_page' => $page,
-            'last_page' => ceil($total / $perPage)
+            'last_page' => ceil($total / $perPage),
+            'from' => $offset + 1,
+            'to' => min($offset + $perPage, $total)
         ];
+    }
+    
+    /**
+     * Begin transaction
+     */
+    public function beginTransaction()
+    {
+        $connection = self::getConnection();
+        return $connection->beginTransaction();
+    }
+    
+    /**
+     * Commit transaction
+     */
+    public function commit()
+    {
+        $connection = self::getConnection();
+        return $connection->commit();
+    }
+    
+    /**
+     * Rollback transaction
+     */
+    public function rollback()
+    {
+        $connection = self::getConnection();
+        return $connection->rollBack();
     }
     
     /**
@@ -296,14 +628,46 @@ abstract class BaseModel
     }
     
     /**
-     * Sanitize input
+     * Clear relevant cache for this table
      */
-    protected function sanitize($data)
+    protected function clearRelevantCache()
     {
-        if (is_array($data)) {
-            return array_map([$this, 'sanitize'], $data);
-        }
+        // Clear all query cache for safety
+        self::$queryCache = [];
+    }
+    
+    /**
+     * Sanitize ORDER BY clause
+     */
+    protected function sanitizeOrderBy($orderBy)
+    {
+        // Remove any dangerous characters
+        $orderBy = preg_replace('/[^a-zA-Z0-9_,. ]/', '', $orderBy);
+        return $orderBy;
+    }
+    
+    /**
+     * Escape identifier (table/column name)
+     */
+    protected function escapeIdentifier($identifier)
+    {
+        // Remove backticks if present
+        $identifier = str_replace('`', '', $identifier);
         
-        return htmlspecialchars(strip_tags($data), ENT_QUOTES, 'UTF-8');
+        // Add backticks for MySQL
+        return "`{$identifier}`";
+    }
+    
+    /**
+     * Get performance statistics
+     */
+    public static function getStats()
+    {
+        return [
+            'queries' => self::$queryCount,
+            'cache_hits' => self::$cacheHits,
+            'active_connections' => self::$activeConnections,
+            'cache_size' => count(self::$queryCache)
+        ];
     }
 }

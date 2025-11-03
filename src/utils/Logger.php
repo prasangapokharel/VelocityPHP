@@ -1,9 +1,10 @@
 <?php
 /**
- * Logger Class
+ * VelocityPhp Logger
  * Provides clean, detailed error logging and debugging
  * 
- * @package NativeMVC
+ * @package VelocityPhp
+ * @version 1.0.0
  */
 
 namespace App\Utils;
@@ -17,11 +18,29 @@ class Logger
      */
     public static function init()
     {
-        self::$logPath = BASE_PATH . '/logs/';
+        // Try default location first
+        $logPath = BASE_PATH . '/logs/';
         
-        // Ensure log directory exists
-        if (!is_dir(self::$logPath)) {
-            mkdir(self::$logPath, 0777, true);
+        // Create directory if it doesn't exist (shared hosting compatible)
+        if (!is_dir($logPath)) {
+            @mkdir($logPath, 0777, true);
+        }
+        
+        // Check if default location is writable
+        if (is_dir($logPath) && is_writable($logPath)) {
+            self::$logPath = $logPath;
+        } else {
+            // Fallback to system temp directory (shared hosting compatible)
+            $fallbackPath = sys_get_temp_dir() . '/velocity_logs/';
+            if (!is_dir($fallbackPath)) {
+                @mkdir($fallbackPath, 0777, true);
+            }
+            if (is_dir($fallbackPath) && is_writable($fallbackPath)) {
+                self::$logPath = $fallbackPath;
+            } else {
+                // Last resort: use system temp directly
+                self::$logPath = sys_get_temp_dir() . '/';
+            }
         }
     }
     
@@ -58,15 +77,17 @@ class Logger
     }
     
     /**
-     * Log exception with full stack trace
+     * Log exception or error with full stack trace
+     * Accepts Throwable (Exception or Error)
      */
-    public static function exception(\Exception $e)
+    public static function exception(\Throwable $e)
     {
         $context = [
             'file' => $e->getFile(),
             'line' => $e->getLine(),
             'trace' => $e->getTraceAsString(),
-            'code' => $e->getCode()
+            'code' => $e->getCode(),
+            'type' => get_class($e)
         ];
         
         self::log('EXCEPTION', $e->getMessage(), $context);
@@ -92,8 +113,14 @@ class Logger
             $message
         );
         
-        // Add context if provided
+        // Add context if provided (sanitize paths for shared hosting)
         if (!empty($context)) {
+            // Sanitize file paths in context
+            foreach ($context as $key => $value) {
+                if (is_string($value) && (strpos($key, 'file') !== false || strpos($key, 'path') !== false || strpos($key, 'location') !== false)) {
+                    $context[$key] = defined('BASE_PATH') ? str_replace(BASE_PATH, '[BASE]', $value) : $value;
+                }
+            }
             $logEntry .= "Context:\n";
             foreach ($context as $key => $value) {
                 if (is_array($value) || is_object($value)) {

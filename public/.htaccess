@@ -1,6 +1,7 @@
 # Enable Rewrite Engine
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    # Shared hosting compatible - use relative base or detect automatically
     RewriteBase /
 
     # Force HTTPS (Production)
@@ -86,8 +87,24 @@ Options -Indexes
     Deny from all
 </FilesMatch>
 
-# PHP Security Settings
+# PHP Security Settings (shared hosting compatible)
+# Note: These may be restricted on some shared hosts
+<IfModule mod_php.c>
+    php_flag display_errors Off
+    php_flag log_errors On
+</IfModule>
+
+# PHP 7+ settings (if mod_php7 is available)
 <IfModule mod_php7.c>
+    php_flag display_errors Off
+    php_flag log_errors On
+    php_value max_execution_time 30
+    php_value upload_max_filesize 10M
+    php_value post_max_size 10M
+</IfModule>
+
+# PHP 8+ settings (if mod_php8 is available)
+<IfModule mod_php8.c>
     php_flag display_errors Off
     php_flag log_errors On
     php_value max_execution_time 30

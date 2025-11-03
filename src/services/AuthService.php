@@ -3,7 +3,7 @@
  * Authentication Service
  * Handles user authentication and session management
  * 
- * @package NativeMVC
+ * @package VelocityPhp
  */
 
 namespace App\Services;

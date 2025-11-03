@@ -1,9 +1,10 @@
 <?php
 /**
- * User Model
- * Handles user data operations
+ * VelocityPhp User Model
+ * Handles user data operations with optimized queries
  * 
- * @package NativeMVC
+ * @package VelocityPhp
+ * @version 1.0.0
  */
 
 namespace App\Models;
@@ -13,6 +14,7 @@ class UserModel extends BaseModel
     protected $table = 'users';
     protected $primaryKey = 'id';
     protected $fillable = ['name', 'email', 'password', 'role', 'status'];
+    protected $timestamps = false; // Set to true if your users table has created_at/updated_at columns
     
     /**
      * Find user by email

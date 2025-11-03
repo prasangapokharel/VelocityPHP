@@ -2,9 +2,8 @@
  * Core Application Styles
  * Supports SPA transitions, loading states, and notifications
  */
-
-/* Reset & Base Styles */
-* {
+ 
+ * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;

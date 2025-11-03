@@ -1,170 +1,128 @@
 <?php
 /**
- * Authentication Controller
- * Handles login, register, logout
+ * VelocityPhp Auth Controller
+ * Handles login/logout with minimal code
  * 
- * @package NativeMVC
+ * @package VelocityPhp
  */
 
 namespace App\Controllers;
 
-use App\Services\AuthService;
-use App\Utils\Logger;
+use App\Utils\Auth;
+use App\Utils\Response;
+use App\Models\UserModel;
 
 class AuthController extends BaseController
 {
-    private $authService;
-    
-    public function __construct()
+    /**
+     * Show login page
+     */
+    public function showLogin()
     {
-        $this->authService = new AuthService();
+        // Redirect if already logged in
+        if (Auth::check()) {
+            Response::redirect('/dashboard');
+        }
+        
+        include VIEW_PATH . '/pages/login/index.php';
     }
     
     /**
-     * Handle login request
+     * Handle login
      */
     public function login($params, $isAjax)
     {
-        // Validate input
-        $validation = $this->validate($this->post(), [
+        $email = $this->post('email');
+        $password = $this->post('password');
+        $remember = $this->post('remember') === 'on';
+        
+        // Validate
+        $errors = $this->validate($_POST, [
             'email' => 'required|email',
-            'password' => 'required|min:6'
+            'password' => 'required'
         ]);
         
-        if ($validation !== true) {
-            Logger::warning('Login validation failed', [
-                'errors' => $validation,
-                'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown'
-            ]);
-            
-            return $this->jsonError('Validation failed', $validation, 422);
+        if ($errors !== true) {
+            return $this->jsonError('Validation failed', $errors, 400);
         }
         
         // Attempt login
-        $email = $this->post('email');
-        $password = $this->post('password');
-        $remember = $this->post('remember', false);
-        
-        $result = $this->authService->login($email, $password);
-        
-        if ($result['success']) {
-            // Set remember me cookie if requested
-            if ($remember) {
-                setcookie('remember_token', bin2hex(random_bytes(32)), [
-                    'expires' => time() + (30 * 24 * 60 * 60), // 30 days
-                    'path' => '/',
-                    'secure' => isset($_SERVER['HTTPS']),
-                    'httponly' => true,
-                    'samesite' => 'Lax'
-                ]);
-            }
-            
-            Logger::info('User login successful', [
-                'email' => $email,
-                'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
-                'user_id' => $result['user']['id'] ?? null
+        if (Auth::login($email, $password, $remember)) {
+            return $this->jsonSuccess('Login successful', [
+                'user' => Auth::user(),
+                'redirect' => '/dashboard'
             ]);
-            
-            return $this->jsonSuccess(
-                $result['message'],
-                ['user' => $result['user']],
-                '/dashboard'
-            );
-        } else {
-            Logger::warning('Login failed', [
-                'email' => $email,
-                'reason' => $result['message'],
-                'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown'
-            ]);
-            
-            return $this->jsonError($result['message'], [], 401);
         }
+        
+        return $this->jsonError('Invalid credentials', [], 401);
     }
     
     /**
-     * Handle register request
-     */
-    public function register($params, $isAjax)
-    {
-        // Validate input
-        $validation = $this->validate($this->post(), [
-            'name' => 'required|min:3|max:100',
-            'email' => 'required|email',
-            'password' => 'required|min:6',
-            'password_confirmation' => 'required|confirmed'
-        ]);
-        
-        if ($validation !== true) {
-            Logger::warning('Registration validation failed', [
-                'errors' => $validation
-            ]);
-            
-            return $this->jsonError('Validation failed', $validation, 422);
-        }
-        
-        // Attempt registration
-        $data = [
-            'name' => $this->sanitize($this->post('name')),
-            'email' => $this->sanitize($this->post('email')),
-            'password' => $this->post('password')
-        ];
-        
-        $result = $this->authService->register($data);
-        
-        if ($result['success']) {
-            Logger::info('User registration successful', [
-                'email' => $data['email'],
-                'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown'
-            ]);
-            
-            return $this->jsonSuccess(
-                $result['message'],
-                ['user' => $result['user']],
-                '/dashboard'
-            );
-        } else {
-            Logger::warning('Registration failed', [
-                'email' => $data['email'],
-                'reason' => $result['message']
-            ]);
-            
-            return $this->jsonError($result['message'], [], 400);
-        }
-    }
-    
-    /**
-     * Handle logout request
+     * Handle logout
      */
     public function logout($params, $isAjax)
     {
-        $userId = $_SESSION['user_id'] ?? null;
+        Auth::logout();
         
-        $result = $this->authService->logout();
-        
-        // Clear remember me cookie
-        if (isset($_COOKIE['remember_token'])) {
-            setcookie('remember_token', '', time() - 3600, '/');
+        if ($isAjax) {
+            return $this->jsonSuccess('Logged out', ['redirect' => '/login']);
         }
         
-        Logger::info('User logout', [
-            'user_id' => $userId,
-            'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown'
-        ]);
-        
-        return $this->jsonSuccess($result['message'], [], '/login');
+        Response::redirect('/login');
     }
     
     /**
-     * Check if user is authenticated
+     * Show register page
      */
-    public function check($params, $isAjax)
+    public function showRegister()
     {
-        $isAuthenticated = $this->authService->check();
-        $user = $this->authService->user();
+        if (Auth::check()) {
+            Response::redirect('/dashboard');
+        }
         
-        return $this->json([
-            'authenticated' => $isAuthenticated,
-            'user' => $user
+        include VIEW_PATH . '/pages/register/index.php';
+    }
+    
+    /**
+     * Handle registration
+     */
+    public function register($params, $isAjax)
+    {
+        $data = $this->post();
+        
+        // Validate
+        $errors = $this->validate($data, [
+            'name' => 'required|min:3',
+            'email' => 'required|email',
+            'password' => 'required|min:8',
+            'password_confirmation' => 'required|confirmed'
+        ]);
+        
+        if ($errors !== true) {
+            return $this->jsonError('Validation failed', $errors, 400);
+        }
+        
+        // Check if email exists
+        $userModel = new UserModel();
+        if ($userModel->findByEmail($data['email'])) {
+            return $this->jsonError('Email already exists', [], 400);
+        }
+        
+        // Create user
+        $userId = $userModel->create([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => Auth::hashPassword($data['password']),
+            'role' => 'user',
+            'status' => 'active'
+        ]);
+        
+        // Auto login
+        Auth::login($data['email'], $data['password']);
+        
+        return $this->jsonSuccess('Registration successful', [
+            'user' => Auth::user(),
+            'redirect' => '/dashboard'
         ]);
     }
 }

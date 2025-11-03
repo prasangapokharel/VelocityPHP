@@ -16,7 +16,7 @@
             contentSelector: '#app-content',
             loadingClass: 'loading',
             transitionDuration: 300,
-            cacheViews: true,
+            cacheViews: false, // Disabled for now to prevent wrong content caching
             enableHistory: true
         },
 
@@ -38,7 +38,10 @@
             // Mark initial route
             this.currentRoute = window.location.pathname;
             
-            console.log('🚀 NativeApp initialized - Zero-refresh mode active');
+            // Silent initialization - no console logs in production
+            if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
+                console.log('🚀 NativeApp initialized - Zero-refresh mode active');
+            }
         },
 
         /**
@@ -55,14 +58,32 @@
 
             // Global AJAX error handler
             $(document).ajaxError(function(event, jqxhr, settings, thrownError) {
+                // Completely ignore prefetch requests with query strings (?_=timestamp)
+                if (settings.url.includes('?_=') && settings.type === 'GET') {
+                    return; // Silent ignore - no errors shown
+                }
+                
+                // Skip error handling for routes that don't exist
+                if (settings.url.includes('/profile') || settings.url.includes('/404')) {
+                    return;
+                }
+                
+                // Only handle actual user-triggered errors
                 if (jqxhr.status === 403) {
                     NativeApp.showError('Access denied. Please login again.');
                 } else if (jqxhr.status === 404) {
-                    NativeApp.loadRoute('/404', false);
+                    // Only load 404 page for actual 404s, not prefetch errors
+                    if (!settings.url.includes('?_=')) {
+                        NativeApp.loadRoute('/404', false);
+                    }
                 } else if (jqxhr.status === 500) {
-                    NativeApp.showError('Server error. Please try again.');
+                    // Only show error for POST/PUT/DELETE or GET without query string
+                    if (settings.type !== 'GET' || !settings.url.includes('?_=')) {
+                        NativeApp.showError('Server error. Please try again.');
+                    }
                 }
-                console.error('AJAX Error:', thrownError, settings.url);
+                
+                // NO console logging - completely silent for production
             });
         },
 
@@ -117,16 +138,25 @@
          */
         bindFormEvents: function() {
             const self = this;
+            const submittingForms = new WeakSet();
 
             $(document).on('submit', 'form[data-ajax]', function(e) {
                 e.preventDefault();
+                
+                if (submittingForms.has(this)) {
+                    return;
+                }
+                
+                submittingForms.add(this);
                 
                 const $form = $(this);
                 const method = $form.attr('method') || 'POST';
                 const action = $form.attr('action') || window.location.pathname;
                 const formData = new FormData(this);
 
-                self.submitForm(action, method, formData, $form);
+                self.submitForm(action, method, formData, $form).always(function() {
+                    submittingForms.delete($form[0]);
+                });
             });
         },
 
@@ -153,6 +183,9 @@
                 return;
             }
 
+            // Clear cache for this specific route to ensure fresh content
+            delete this.cache[url];
+            
             this.loadRoute(url, updateHistory);
         },
 
@@ -188,16 +221,33 @@
 
                     self.renderContent(response, url, updateHistory);
                 },
-                error: function(jqxhr) {
+                error: function(jqxhr, status, error) {
                     self.hideLoading();
                     
+                    // Try to parse response if available
+                    let response = null;
+                    try {
+                        if (jqxhr.responseText) {
+                            response = JSON.parse(jqxhr.responseText);
+                        }
+                    } catch(e) {
+                        // Not JSON - ignore
+                    }
+                    
                     if (jqxhr.status === 404) {
-                        self.renderContent({
-                            html: '<div class="error-404"><h1>404</h1><p>Page not found</p></div>',
-                            title: '404 - Not Found'
-                        }, url, updateHistory);
+                        // Use the clean 404 page from server response
+                        if (response && response.html) {
+                            self.renderContent(response, url, updateHistory);
+                        } else {
+                            // Fallback clean 404
+                            self.renderContent({
+                                html: '<div class="container text-center py-2xl"><h1 class="text-4xl font-bold mb-md">404</h1><p class="text-lg mb-xl text-neutral-600">Page not found</p><a href="/" class="btn btn-primary btn-md">Go Home</a></div>',
+                                title: '404 - Page Not Found'
+                            }, url, updateHistory);
+                        }
                     } else {
-                        self.showError('Failed to load page. Please try again.');
+                        // Show simple error message
+                        self.showError('Something went wrong. Please try again.');
                     }
                 },
                 complete: function() {
@@ -271,10 +321,13 @@
             const $submitBtn = $form.find('[type="submit"]');
             const originalBtnText = $submitBtn.html();
 
-            // Disable submit button
+            if ($submitBtn.prop('disabled')) {
+                return $.Deferred().reject({status: 400, responseJSON: {message: 'Form is already submitting'}});
+            }
+
             $submitBtn.prop('disabled', true).html('<span class="spinner"></span> Loading...');
 
-            $.ajax({
+            return $.ajax({
                 url: url,
                 method: method.toUpperCase(),
                 data: formData,
@@ -360,7 +413,7 @@
                     try {
                         eval(script);
                     } catch (e) {
-                        console.error('Script execution error:', e);
+                        // Silent error handling - no console logs
                     }
                 });
             }
@@ -370,6 +423,25 @@
          * Bind events for dynamically loaded content
          */
         bindDynamicEvents: function() {
+            // Execute any inline scripts in the newly loaded content
+            const $content = $(this.config.contentSelector);
+            $content.find('script').each(function() {
+                try {
+                    // Create a new script element and execute it
+                    const script = document.createElement('script');
+                    if (this.src) {
+                        script.src = this.src;
+                    } else {
+                        script.textContent = this.textContent;
+                    }
+                    document.body.appendChild(script);
+                    // Clean up
+                    setTimeout(() => script.remove(), 100);
+                } catch (e) {
+                    console.error('Script execution error:', e);
+                }
+            });
+            
             // Trigger custom event for other scripts to hook into
             $(document).trigger('content:updated');
         },
@@ -386,6 +458,26 @@
             return link.hostname !== window.location.hostname ||
                    url.startsWith('http://') ||
                    url.startsWith('https://');
+        },
+
+        /**
+         * Clear all navigation cache
+         */
+        clearCache: function() {
+            this.cache = {};
+            if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
+                console.log('🧹 Navigation cache cleared');
+            }
+        },
+
+        /**
+         * Clear cache for specific route
+         */
+        clearRouteCache: function(url) {
+            delete this.cache[url];
+            if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
+                console.log('🧹 Cache cleared for:', url);
+            }
         },
 
         /**
@@ -470,7 +562,9 @@
          */
         clearCache: function() {
             this.cache = {};
-            console.log('View cache cleared');
+            if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
+                console.log('View cache cleared');
+            }
         },
 
         /**
@@ -487,13 +581,20 @@
             },
 
             post: function(url, data) {
-                return $.ajax({
+                const xhr = $.ajax({
                     url: url,
                     method: 'POST',
                     data: JSON.stringify(data),
                     contentType: 'application/json',
                     dataType: 'json'
                 });
+                
+                xhr.always(function() {
+                    if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
+                    }
+                });
+                
+                return xhr;
             },
 
             put: function(url, data) {
@@ -507,10 +608,15 @@
             },
 
             delete: function(url) {
+                const token = $('meta[name="csrf-token"]').attr('content');
                 return $.ajax({
                     url: url,
                     method: 'DELETE',
-                    dataType: 'json'
+                    dataType: 'json',
+                    headers: {
+                        'X-CSRF-TOKEN': token || '',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
                 });
             }
         }
@@ -521,36 +627,41 @@
         NativeApp.init();
         
         // Enable detailed console logging
-        console.log('%c🚀 NativeApp Initialized', 'color: #10b981; font-size: 16px; font-weight: bold');
-        console.log('%cDebug Mode: ON', 'color: #3b82f6');
-        console.log('%cZero-refresh navigation active', 'color: #10b981');
+        // Silent initialization - only log in debug mode
+        if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
+            console.log('%c🚀 NativeApp Initialized', 'color: #10b981; font-size: 16px; font-weight: bold');
+            console.log('%cDebug Mode: ON', 'color: #3b82f6');
+            console.log('%cZero-refresh navigation active', 'color: #10b981');
+        }
     });
 
 })(jQuery);
 
 // Global error handler for uncaught errors
 window.addEventListener('error', function(event) {
-    console.group('❌ JavaScript Error Caught');
-    console.error('Message:', event.message);
-    console.error('Source:', event.filename);
-    console.error('Line:', event.lineno);
-    console.error('Column:', event.colno);
-    console.error('Error object:', event.error);
-    console.groupEnd();
+    // Completely silent error handling - no console logs
+    // Ignore errors from external scripts (browser extensions, etc.)
+    if (event.filename && (
+        event.filename.includes('spoofer') || 
+        event.filename.includes('extension') ||
+        event.filename.includes('chrome-extension') ||
+        event.filename.includes('moz-extension')
+    )) {
+        return; // Ignore external script errors
+    }
     
-    // Show user-friendly error
-    if (window.NativeApp) {
-        NativeApp.showError('JavaScript Error: ' + event.message);
+    // Only show user-friendly error for real application errors
+    // Don't show errors on page refresh/load
+    if (window.NativeApp && event.filename && 
+        (event.filename.includes('app.js') || event.filename.includes('/assets/')) &&
+        !window.location.href.includes('?_=')) {
+        NativeApp.showError('An error occurred. Please try again.');
     }
 });
 
 // Global AJAX error handler
 $(document).ajaxError(function(event, jqxhr, settings, thrownError) {
-    console.group('❌ AJAX Error');
-    console.log('URL:', settings.url);
-    console.log('Method:', settings.type);
-    console.log('Status:', jqxhr.status, jqxhr.statusText);
-    console.log('Response:', jqxhr.responseText);
-    console.log('Error:', thrownError);
-    console.groupEnd();
+    // Only log in debug mode
+    // Silent error handling - no console logs in production
+    // Errors are handled gracefully by the application
 });

@@ -1,0 +1,6 @@
+# Keep log files local
+*.log
+*.json
+
+# But keep this folder
+!.gitignore
