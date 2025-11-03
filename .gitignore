@@ -22,6 +22,7 @@ node_modules/
 # IDE
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 *~
@@ -45,3 +46,5 @@ phpunit.xml
 # Build files
 /build/
 /dist/
+
+.cursor/
