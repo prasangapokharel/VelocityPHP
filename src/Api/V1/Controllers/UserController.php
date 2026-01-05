@@ -5,27 +5,33 @@ declare(strict_types=1);
 namespace App\Api\V1\Controllers;
 
 use App\Models\UserModel;
+use App\Utils\FileCache;
 
 /**
  * User API Controller
  * 
- * RESTful CRUD operations for users.
+ * RESTful CRUD operations for users with file-based caching.
+ * 
+ * Cache Flow:
+ *   Database → (only when data changes) → Cache → Client
  * 
  * @package App\Api\V1
  */
 final class UserController extends BaseController
 {
     private UserModel $model;
+    private FileCache $cache;
 
     public function __construct()
     {
         $this->model = new UserModel();
+        $this->cache = FileCache::getInstance();
     }
 
     /**
      * GET /api/v1/users
      * 
-     * List users with pagination
+     * List users with pagination and caching
      */
     public function index(): void
     {
@@ -34,6 +40,19 @@ final class UserController extends BaseController
         $status = $this->get('status');
         $role = $this->get('role');
 
+        // Build cache key from query params
+        $cacheKey = "users_list_p{$page}_pp{$perPage}_s" . ($status ?? 'all') . "_r" . ($role ?? 'all');
+        
+        // Try cache first
+        $cachedResult = $this->cache->get($cacheKey, 'api');
+        
+        if ($cachedResult !== null) {
+            // Return cached response
+            $this->paginated($cachedResult['data'], $cachedResult['meta']);
+            return;
+        }
+
+        // Cache miss - fetch from database
         $conditions = [];
         
         if ($status && in_array($status, ['active', 'inactive', 'suspended'])) {
@@ -49,20 +68,25 @@ final class UserController extends BaseController
         // Transform data - remove sensitive fields
         $users = array_map([$this, 'transform'], $result['data']);
 
-        $this->paginated($users, [
+        $meta = [
             'current_page' => $result['current_page'],
             'per_page' => $result['per_page'],
             'total' => $result['total'],
             'last_page' => $result['last_page'],
             'from' => $result['from'],
             'to' => $result['to']
-        ]);
+        ];
+
+        // Cache the result (5 minutes TTL)
+        $this->cache->set($cacheKey, ['data' => $users, 'meta' => $meta], 'api', 300);
+
+        $this->paginated($users, $meta);
     }
 
     /**
      * GET /api/v1/users/{id}
      * 
-     * Get single user
+     * Get single user with caching
      */
     public function show(array $params): void
     {
@@ -72,7 +96,10 @@ final class UserController extends BaseController
             $this->notFound('User not found');
         }
 
-        $user = $this->model->find($id);
+        // Try to get from cache first, then database
+        $user = $this->cache->remember("user_{$id}", function() use ($id) {
+            return $this->model->find($id);
+        }, 3600, 'users');
 
         if (!$user) {
             $this->notFound('User not found');
@@ -84,7 +111,7 @@ final class UserController extends BaseController
     /**
      * POST /api/v1/users
      * 
-     * Create new user
+     * Create new user with cache invalidation
      */
     public function store(): void
     {
@@ -116,6 +143,9 @@ final class UserController extends BaseController
             'status' => $input['status'] ?? 'active'
         ]);
 
+        // Invalidate users list cache
+        $this->invalidateListCache();
+
         $user = $this->model->find($id);
 
         $this->created($this->transform($user), 'User created');
@@ -124,7 +154,7 @@ final class UserController extends BaseController
     /**
      * PUT /api/v1/users/{id}
      * 
-     * Update user
+     * Update user with cache invalidation
      */
     public function update(array $params): void
     {
@@ -191,6 +221,10 @@ final class UserController extends BaseController
 
         $this->model->update($id, $data);
 
+        // Invalidate caches
+        $this->model->invalidateUserCache($id);
+        $this->invalidateListCache();
+
         $user = $this->model->find($id);
 
         $this->ok($this->transform($user), 'User updated');
@@ -199,7 +233,7 @@ final class UserController extends BaseController
     /**
      * DELETE /api/v1/users/{id}
      * 
-     * Delete user
+     * Delete user with cache invalidation
      */
     public function destroy(array $params): void
     {
@@ -221,9 +255,22 @@ final class UserController extends BaseController
             $this->error('Cannot delete yourself', self::HTTP_FORBIDDEN);
         }
 
-        $this->model->delete($id);
+        // Delete user (cache invalidation happens in model)
+        $this->model->deleteUser($id);
+
+        // Invalidate list cache
+        $this->invalidateListCache();
 
         $this->noContent();
+    }
+
+    /**
+     * Invalidate users list cache
+     */
+    private function invalidateListCache(): void
+    {
+        // Clear all users list caches
+        $this->cache->invalidatePattern('users_list_*', 'api');
     }
 
     /**
