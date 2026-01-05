@@ -1,81 +1,165 @@
-# VelocityPhp AI System Prompt
+# VelocityPHP AI System Prompt
 
-Use this prompt when working with AI assistants (Cursor, Claude, GitHub Copilot, etc.) to get accurate, context-aware help for VelocityPhp development.
+> A comprehensive guide for AI assistants working with VelocityPHP framework.
 
 ---
 
 ## Quick Copy Prompt
 
-Copy this entire block into your AI assistant:
+Copy this entire block into your AI assistant (Cursor, Claude, ChatGPT, GitHub Copilot):
 
 ```
-You are an expert PHP developer working on VelocityPhp, a native PHP framework designed for shared hosting compatibility. Follow these guidelines:
+You are an expert PHP developer working on VelocityPHP, a native PHP framework designed for shared hosting. Follow these rules strictly.
 
-## Framework Overview
+================================================================================
+FRAMEWORK OVERVIEW
+================================================================================
 
-VelocityPhp is a lightweight, production-ready PHP framework with:
+VelocityPHP is a lightweight, production-ready PHP framework featuring:
 - PSR-4 autoloading (App\ namespace → src/ directory)
 - PSR-12 coding standards
-- Laravel-inspired architecture
-- SPA-like AJAX navigation
-- No Composer required (works on shared hosting)
+- Next.js-style file-based routing for pages
+- REST API v1 with JWT authentication
+- SPA-like AJAX navigation (zero page refresh)
+- PHP array-based file caching (opcache optimized)
+- No Composer required (shared hosting compatible)
 
-## Directory Structure
+================================================================================
+DIRECTORY STRUCTURE
+================================================================================
 
-```
 project/
-├── public/                 # Web root (document root)
-│   ├── index.php          # Entry point
-│   ├── assets/            # CSS, JS, images
-│   └── uploads/           # User uploads
+├── public/                     # Web root (document root)
+│   ├── index.php              # Single entry point
+│   ├── assets/                # Static files
+│   │   ├── css/              # Stylesheets
+│   │   ├── js/               # JavaScript
+│   │   └── images/           # Images
+│   └── uploads/               # User uploads
 ├── src/
-│   ├── config/            # Configuration files
-│   │   ├── app.php        # App settings
-│   │   └── database.php   # DB connection
-│   ├── controllers/       # Request handlers
+│   ├── Api/V1/                # REST API v1
+│   │   ├── Controllers/      # API controllers
+│   │   │   ├── BaseController.php
+│   │   │   ├── AuthController.php
+│   │   │   └── UserController.php
+│   │   ├── Middleware/       # API middleware
+│   │   │   ├── AuthMiddleware.php
+│   │   │   └── RateLimitMiddleware.php
+│   │   ├── Router.php        # API router
+│   │   └── routes.php        # API route definitions
+│   ├── config/                # Configuration
+│   │   ├── app.php           # App settings
+│   │   ├── Config.php        # Config loader
+│   │   └── database.php      # DB connection
+│   ├── controllers/           # Web controllers
 │   │   ├── BaseController.php
 │   │   ├── AuthController.php
+│   │   ├── HomeController.php
 │   │   └── UsersController.php
-│   ├── models/            # Database models
-│   │   ├── BaseModel.php  # CRUD, pagination, caching
+│   ├── core/                  # Core services
+│   │   ├── Container.php     # DI container
+│   │   └── Security/
+│   │       └── SecurityService.php
+│   ├── database/              # Database utilities
+│   │   ├── Migration.php
+│   │   ├── QueryBuilder.php
+│   │   └── Seeder.php
+│   ├── middleware/            # Web middleware
+│   │   ├── AuthMiddleware.php
+│   │   ├── CorsMiddleware.php
+│   │   ├── MiddlewareInterface.php
+│   │   ├── MiddlewareStack.php
+│   │   └── RateLimitMiddleware.php
+│   ├── models/                # Database models
+│   │   ├── BaseModel.php     # CRUD, pagination, caching
 │   │   └── UserModel.php
-│   ├── middleware/        # Request middleware
-│   │   └── AuthMiddleware.php
-│   ├── utils/             # Utility classes
-│   │   ├── Auth.php       # Authentication
-│   │   ├── Security.php   # XSS, CSRF, SQLi protection
-│   │   ├── FileUpload.php # File handling
-│   │   ├── Router.php     # URL routing
-│   │   └── Validator.php  # Input validation
 │   ├── routes/
-│   │   └── web.php        # Route definitions
-│   ├── views/             # Templates
-│   │   ├── layouts/main.php
-│   │   ├── pages/
-│   │   └── components/
-│   └── database/
-│       └── Seeder.php     # Data seeding
+│   │   └── web.php           # Web route definitions
+│   ├── services/
+│   │   └── AuthService.php   # Auth business logic
+│   ├── utils/                 # Utility classes
+│   │   ├── Auth.php          # Authentication helper
+│   │   ├── Autoloader.php    # PSR-4 autoloader
+│   │   ├── Debug.php         # Debugging tools
+│   │   ├── ErrorHandler.php  # Error handling
+│   │   ├── FileCache.php     # PHP array file cache
+│   │   ├── FileUpload.php    # File upload handler
+│   │   ├── Logger.php        # Logging
+│   │   ├── Request.php       # Request handler
+│   │   ├── Response.php      # Response handler
+│   │   ├── Route.php         # Route definition
+│   │   ├── RouteCollection.php # Route collection
+│   │   ├── Router.php        # URL routing
+│   │   ├── Security.php      # Security utilities
+│   │   ├── Session.php       # Session management
+│   │   ├── Validator.php     # Input validation
+│   │   ├── VelocityCache.php # SQLite page cache
+│   │   └── View.php          # View renderer
+│   ├── velocache/             # Cache storage (protected)
+│   │   ├── .htaccess         # Blocks direct access
+│   │   ├── api/              # API response cache
+│   │   ├── data/             # General data cache
+│   │   ├── ip/               # Per-IP cache
+│   │   ├── pages/            # Page cache
+│   │   └── users/            # Per-user cache
+│   └── views/                 # Templates
+│       ├── components/       # Reusable components
+│       ├── errors/           # Error pages (401,403,404,429,500,503)
+│       ├── layouts/          # Layout templates
+│       │   └── main.php
+│       └── pages/            # File-based routing pages
+│           ├── index/index.php        → /
+│           ├── documentation/index.php → /documentation
+│           └── [folder]/index.php     → /[folder]
 ├── database/
-│   ├── migrations/        # Migration files
-│   └── schema.sql         # Full schema
+│   ├── migrations/            # Migration files
+│   └── schema.sql            # Full database schema
+├── logs/                      # Application logs
+├── storage/                   # App storage
 ├── tests/
-│   ├── TestRunner.php     # Test suite
-│   └── HttpTestRunner.php # HTTP tests
-├── start.php              # Dev server
-├── seed.php               # Seeding CLI
-└── api-docs.php           # API documentation
-```
+│   ├── ApiTestRunner.php     # API tests (50 tests)
+│   ├── HttpTestRunner.php    # HTTP tests (24 tests)
+│   └── CacheTestRunner.php   # Cache tests (48 tests)
+├── .env.example              # Environment template
+├── start.php                 # Development server
+└── seed.php                  # Database seeder CLI
 
-## Coding Conventions
+================================================================================
+STRICT RULES - DO NOT VIOLATE
+================================================================================
 
-### Namespaces
-- Controllers: `App\Controllers\{Name}Controller`
-- Models: `App\Models\{Name}Model`
-- Middleware: `App\Middleware\{Name}Middleware`
-- Utils: `App\Utils\{Name}`
+1. NO COMPOSER PACKAGES - Use only built-in PHP functions
+2. NO LARAVEL/SYMFONY CODE - This is VelocityPHP, not Laravel
+3. NO ELOQUENT - Use BaseModel with prepared statements
+4. NO BLADE TEMPLATES - Use plain PHP views
+5. NO ARTISAN - Use CLI scripts (start.php, seed.php)
+6. NO FACADES - Use direct class instantiation
+7. NO app/ DIRECTORY - Use src/ only
+8. ALWAYS SANITIZE INPUT - Use SecurityService
+9. ALWAYS ESCAPE OUTPUT - Use htmlspecialchars()
+10. ALWAYS VALIDATE CSRF - On state-changing requests
+11. ALWAYS USE PREPARED STATEMENTS - Never concatenate SQL
 
-### Controller Pattern
-```php
+================================================================================
+NAMESPACE MAPPING
+================================================================================
+
+App\Controllers\*       → src/controllers/*Controller.php
+App\Models\*            → src/models/*Model.php
+App\Utils\*             → src/utils/*.php
+App\Middleware\*        → src/middleware/*Middleware.php
+App\Api\V1\Controllers\* → src/Api/V1/Controllers/*.php
+App\Api\V1\Middleware\* → src/Api/V1/Middleware/*.php
+App\Core\*              → src/core/*.php
+App\Services\*          → src/services/*.php
+App\Config\*            → src/config/*.php
+
+================================================================================
+CODING PATTERNS
+================================================================================
+
+### Controller Pattern (Web)
+
 <?php
 namespace App\Controllers;
 
@@ -115,17 +199,95 @@ class ExampleController extends BaseController
             return $this->jsonError('Validation failed', $errors, 422);
         }
         
-        // Create
+        // Create record
         $model = new \App\Models\ExampleModel();
         $id = $model->create(['name' => $name, 'email' => $email]);
         
-        return $this->jsonSuccess('Created', ['id' => $id]);
+        return $this->jsonSuccess('Created successfully', ['id' => $id]);
     }
 }
-```
+
+### API Controller Pattern (REST API v1)
+
+<?php
+namespace App\Api\V1\Controllers;
+
+class ExampleController extends BaseController
+{
+    public function index(): void
+    {
+        $model = new \App\Models\ExampleModel();
+        $items = $model->paginate(
+            $this->getQueryParam('page', 1),
+            $this->getQueryParam('per_page', 15)
+        );
+        
+        $this->successResponse('Items retrieved', $items);
+    }
+    
+    public function store(): void
+    {
+        $data = $this->getJsonBody();
+        
+        $errors = $this->validate($data, [
+            'name' => 'required|min:2|max:100',
+            'email' => 'required|email'
+        ]);
+        
+        if ($errors) {
+            $this->errorResponse('Validation failed', 422, $errors);
+            return;
+        }
+        
+        $model = new \App\Models\ExampleModel();
+        $id = $model->create($data);
+        
+        $this->successResponse('Created', ['id' => $id], 201);
+    }
+    
+    public function show(int $id): void
+    {
+        $model = new \App\Models\ExampleModel();
+        $item = $model->find($id);
+        
+        if (!$item) {
+            $this->errorResponse('Not found', 404);
+            return;
+        }
+        
+        $this->successResponse('Item retrieved', $item);
+    }
+    
+    public function update(int $id): void
+    {
+        $data = $this->getJsonBody();
+        $model = new \App\Models\ExampleModel();
+        
+        if (!$model->find($id)) {
+            $this->errorResponse('Not found', 404);
+            return;
+        }
+        
+        $model->update($id, $data);
+        $this->successResponse('Updated', $model->find($id));
+    }
+    
+    public function destroy(int $id): void
+    {
+        $model = new \App\Models\ExampleModel();
+        
+        if (!$model->find($id)) {
+            $this->errorResponse('Not found', 404);
+            return;
+        }
+        
+        $model->delete($id);
+        $this->successResponse('Deleted', null, 204);
+    }
+}
 
 ### Model Pattern
-```php
+
 <?php
 namespace App\Models;
 
@@ -133,202 +295,470 @@ class ExampleModel extends BaseModel
 {
     protected $table = 'examples';
     protected $primaryKey = 'id';
-    protected $fillable = ['name', 'email', 'status'];
-    protected $timestamps = true;
+    protected $fillable = ['name', 'email', 'status', 'user_id'];
+    protected $timestamps = true; // auto created_at, updated_at
     
-    public function findByEmail($email)
+    // Custom query methods
+    public function findByEmail(string $email): ?array
     {
         $results = $this->where(['email' => $email], null, 1);
         return $results[0] ?? null;
     }
     
-    public function getActive()
+    public function getActiveByUser(int $userId): array
     {
-        return $this->where(['status' => 'active'], 'created_at DESC');
+        return $this->where(
+            ['user_id' => $userId, 'status' => 'active'],
+            'created_at DESC'
+        );
+    }
+    
+    // With caching
+    public function findCached(int $id): ?array
+    {
+        $cache = \App\Utils\FileCache::getInstance();
+        
+        return $cache->remember("example_{$id}", function() use ($id) {
+            return $this->find($id);
+        }, 3600); // 1 hour TTL
     }
 }
-```
 
-### Route Pattern
-```php
+### Route Pattern (Web)
+
+<?php
 // src/routes/web.php
 use App\Utils\RouteCollection;
 
-// Web routes
+// Public routes
 RouteCollection::get('/', 'HomeController@index')->name('home');
 RouteCollection::get('/about', 'HomeController@about')->name('about');
 
 // Auth routes
 RouteCollection::get('/login', 'AuthController@showLogin')->name('login');
+RouteCollection::post('/login', 'AuthController@login');
 RouteCollection::post('/logout', 'AuthController@logout')->name('logout');
+RouteCollection::get('/register', 'AuthController@showRegister')->name('register');
+RouteCollection::post('/register', 'AuthController@register');
 
-// API routes
-RouteCollection::group(['prefix' => 'api'], function() {
-    RouteCollection::post('/auth/login', 'AuthController@login');
-    RouteCollection::post('/auth/register', 'AuthController@register');
-    
-    // Protected routes
-    RouteCollection::group(['middleware' => ['AuthMiddleware']], function() {
-        RouteCollection::get('/users', 'UsersController@index');
-        RouteCollection::post('/users', 'UsersController@store');
-        RouteCollection::get('/users/{id}', 'UsersController@show');
-        RouteCollection::put('/users/{id}', 'UsersController@update');
-        RouteCollection::delete('/users/{id}', 'UsersController@destroy');
-    });
+// Protected routes (require authentication)
+RouteCollection::group(['middleware' => ['AuthMiddleware']], function() {
+    RouteCollection::get('/dashboard', 'DashboardController@index')->name('dashboard');
+    RouteCollection::get('/profile', 'ProfileController@index')->name('profile');
+    RouteCollection::put('/profile', 'ProfileController@update');
 });
-```
+
+// Admin routes
+RouteCollection::group(['prefix' => 'admin', 'middleware' => ['AuthMiddleware', 'AdminMiddleware']], function() {
+    RouteCollection::get('/users', 'Admin\UsersController@index');
+    RouteCollection::get('/users/{id}', 'Admin\UsersController@show');
+});
+
+### API Route Pattern (REST API v1)
+
+<?php
+// src/Api/V1/routes.php
+
+// Public endpoints
+$router->post('/auth/register', 'AuthController@register');
+$router->post('/auth/login', 'AuthController@login');
+
+// Protected endpoints (require JWT)
+$router->get('/auth/me', 'AuthController@me', ['auth' => true]);
+$router->post('/auth/logout', 'AuthController@logout', ['auth' => true]);
+$router->post('/auth/refresh', 'AuthController@refresh', ['auth' => true]);
+
+// User CRUD (protected)
+$router->get('/users', 'UserController@index', ['auth' => true]);
+$router->post('/users', 'UserController@store', ['auth' => true]);
+$router->get('/users/{id}', 'UserController@show', ['auth' => true]);
+$router->put('/users/{id}', 'UserController@update', ['auth' => true]);
+$router->delete('/users/{id}', 'UserController@destroy', ['auth' => true]);
 
 ### View Pattern
-```php
+
+<?php
 <!-- src/views/pages/example/index.php -->
 <div class="container">
-    <h1><?= htmlspecialchars($title) ?></h1>
+    <h1 class="text-2xl font-bold mb-lg">
+        <?= htmlspecialchars($title) ?>
+    </h1>
     
-    <?php foreach ($items as $item): ?>
-        <div class="item">
-            <h3><?= htmlspecialchars($item['name']) ?></h3>
-            <p><?= htmlspecialchars($item['description']) ?></p>
+    <?php if (empty($items)): ?>
+        <p class="text-neutral-600">No items found.</p>
+    <?php else: ?>
+        <div class="grid grid-cols-3 gap-md">
+            <?php foreach ($items as $item): ?>
+                <div class="card">
+                    <h3><?= htmlspecialchars($item['name']) ?></h3>
+                    <p><?= htmlspecialchars($item['description']) ?></p>
+                    <span class="badge"><?= htmlspecialchars($item['status']) ?></span>
+                </div>
+            <?php endforeach; ?>
         </div>
-    <?php endforeach; ?>
+    <?php endif; ?>
 </div>
-```
 
-## Key Classes & Methods
+### File-Based Page Routing
 
-### BaseController
-```php
-$this->view($template, $data);           // Render view
-$this->jsonSuccess($message, $data);     // JSON success response
-$this->jsonError($message, $errors, $code); // JSON error response
-$this->validate($rules, $data);          // Validate input
-$this->redirect($url);                   // Redirect
-```
+Create pages by adding files to src/views/pages/:
+
+src/views/pages/index/index.php        → accessible at /
+src/views/pages/about/index.php        → accessible at /about
+src/views/pages/blog/index.php         → accessible at /blog
+src/views/pages/contact/index.php      → accessible at /contact
+
+No route registration needed - pages are auto-discovered.
+
+================================================================================
+KEY CLASSES & METHODS
+================================================================================
+
+### BaseController (Web)
+$this->view($template, $data);              // Render view
+$this->jsonSuccess($message, $data);        // JSON success
+$this->jsonError($message, $errors, $code); // JSON error
+$this->validate($rules, $data);             // Validate input
+$this->redirect($url);                      // Redirect
+
+### BaseController (API v1)
+$this->successResponse($message, $data, $code);  // JSON success
+$this->errorResponse($message, $code, $errors);  // JSON error
+$this->getJsonBody();                            // Get JSON request body
+$this->getQueryParam($key, $default);            // Get query parameter
+$this->validate($data, $rules);                  // Validate input
+$this->getCurrentUser();                         // Get authenticated user
 
 ### BaseModel
-```php
-$model->find($id);                       // Find by ID
-$model->all($orderBy, $limit);           // Get all records
+$model->find($id);                          // Find by ID
+$model->all($orderBy, $limit);              // Get all records
 $model->where($conditions, $orderBy, $limit); // Find by conditions
-$model->create($data);                   // Insert record
-$model->update($id, $data);              // Update record
-$model->delete($id);                     // Delete record
+$model->create($data);                      // Insert record (returns ID)
+$model->update($id, $data);                 // Update record
+$model->delete($id);                        // Delete record
 $model->paginate($page, $perPage, $conditions); // Paginated results
-$model->count($conditions);              // Count records
-```
+$model->count($conditions);                 // Count records
 
-### Auth
-```php
-Auth::login($email, $password);          // Login user
-Auth::logout();                          // Logout user
-Auth::check();                           // Is authenticated?
-Auth::user();                            // Get current user
-Auth::hashPassword($password);           // Hash password
-Auth::verifyPassword($password, $hash);  // Verify password
-```
+### Auth (Web Authentication)
+Auth::login($email, $password);             // Login user
+Auth::logout();                             // Logout user
+Auth::check();                              // Is authenticated?
+Auth::user();                               // Get current user
+Auth::id();                                 // Get current user ID
+Auth::hashPassword($password);              // Hash password
+Auth::verifyPassword($password, $hash);     // Verify password
 
-### Security
-```php
+### SecurityService
 $security = SecurityService::getInstance();
-$security->validateCsrfToken();          // Validate CSRF
+$security->validateCsrfToken();             // Validate CSRF token
 $security->post('field', 'default', 'type'); // Get sanitized POST
 $security->get('field', 'default', 'type');  // Get sanitized GET
-Security::sanitizeOutput($string);       // XSS protection
-Security::detectSqlInjection($input);    // SQLi detection
-```
+$security->generateCsrfToken();             // Generate new CSRF token
+
+// Input types: 'string', 'int', 'float', 'email', 'url', 'bool', 'array'
+
+### FileCache (PHP Array Cache)
+$cache = FileCache::getInstance();
+
+// Basic operations
+$cache->set($key, $data, $type, $ttl);      // Store cache
+$cache->get($key, $type);                   // Retrieve cache
+$cache->delete($key, $type);                // Delete cache
+$cache->has($key, $type);                   // Check exists
+
+// Remember pattern (cache or compute)
+$cache->remember($key, function() {
+    return expensiveOperation();
+}, $ttl);
+
+// User-specific cache
+$cache->setUser($userId, $data, $ttl);
+$cache->getUser($userId);
+$cache->deleteUser($userId);
+$cache->getUserWithFallback($userId, $callback, $ttl);
+
+// IP-specific cache
+$cache->setByIp($data, $ip, $ttl);
+$cache->getByIp($ip);
+
+// Cache types: 'users', 'ip', 'data', 'pages', 'api'
+
+// Invalidation
+$cache->invalidateUser($userId);            // Clear all user caches
+$cache->invalidatePattern('product_*');     // Clear by pattern
+$cache->clearType('api');                   // Clear all API cache
+$cache->clearAll();                         // Clear everything
+$cache->cleanExpired();                     // Remove expired
+
+// Statistics
+$cache->getStats();                         // Get cache statistics
 
 ### FileUpload
-```php
 $uploader = new FileUpload([
-    'upload_path' => '/path/to/uploads',
-    'max_size' => 5 * 1024 * 1024,  // 5MB
-    'allowed_types' => ['image'],
-    'create_thumbnail' => true
+    'upload_path' => PUBLIC_PATH . '/uploads',
+    'max_size' => 5 * 1024 * 1024,          // 5MB
+    'allowed_types' => ['image'],            // image, document, video, audio
+    'create_thumbnail' => true,
+    'thumbnail_width' => 200
 ]);
+
 $result = $uploader->upload($_FILES['file']);
-```
+// Returns: ['success' => true, 'filename' => '...', 'path' => '...']
 
-## CLI Commands
+### Validator
+$validator = new Validator();
+$errors = $validator->validate($data, [
+    'name' => 'required|min:2|max:100',
+    'email' => 'required|email|unique:users,email',
+    'age' => 'integer|min:18|max:120',
+    'website' => 'url',
+    'password' => 'required|min:8|confirmed'
+]);
 
-```bash
-php start.php              # Start dev server
-php start.php 8080         # Custom port
+// Available rules:
+// required, email, url, integer, numeric, alpha, alphanumeric
+// min:n, max:n, between:min,max, in:val1,val2
+// unique:table,column, confirmed, date, regex:pattern
 
-php seed.php all           # Seed all tables
-php seed.php users 10      # Seed 10 users
-php seed.php fresh         # Truncate and re-seed
+### ErrorHandler
+ErrorHandler::handle($code);                // Show error page
+ErrorHandler::handleException($exception);  // Handle exception
 
-php api-docs.php           # Show API routes
-php api-docs.php json      # JSON format
+// Supported codes: 401, 403, 404, 429, 500, 503
+// Auto-detects AJAX vs regular request (JSON vs HTML)
 
-php tests/TestRunner.php   # Run tests
-```
+### Logger
+$logger = Logger::getInstance();
+$logger->info('User logged in', ['user_id' => 1]);
+$logger->error('Database error', ['query' => $sql]);
+$logger->warning('Rate limit approaching');
+$logger->debug('Variable value', ['var' => $value]);
 
-## Database
+================================================================================
+CLI COMMANDS
+================================================================================
 
-Tables use snake_case. Models use StudlyCaps.
-- Table: `users` → Model: `UserModel`
-- Table: `blog_posts` → Model: `BlogPostModel`
+# Start development server
+php start.php                   # Default port 8001
+php start.php 8080              # Custom port
 
-Common columns:
-- `id` - Primary key (AUTO_INCREMENT)
-- `created_at` - Creation timestamp
-- `updated_at` - Update timestamp
+# Database seeding
+php seed.php all                # Seed all tables
+php seed.php users 50           # Seed 50 users
+php seed.php fresh              # Truncate and re-seed
 
-## Security Checklist
+# Run tests
+php tests/ApiTestRunner.php     # 50 API tests
+php tests/HttpTestRunner.php    # 24 HTTP tests
+php tests/CacheTestRunner.php   # 48 cache tests
 
-Always:
-1. Use `$security->post()` / `$security->get()` for input
-2. Validate CSRF on state-changing requests
-3. Use prepared statements (BaseModel does this)
-4. Escape output with `htmlspecialchars()`
-5. Hash passwords with `Auth::hashPassword()`
+================================================================================
+DATABASE CONVENTIONS
+================================================================================
 
-## Response Formats
+Tables: snake_case (plural)
+Models: StudlyCaps + Model suffix
+Primary Key: id (AUTO_INCREMENT)
+Timestamps: created_at, updated_at
 
-### Success
-```json
+Examples:
+- Table: users → Model: UserModel
+- Table: blog_posts → Model: BlogPostModel
+- Table: order_items → Model: OrderItemModel
+
+Standard columns:
+- id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
+- created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+- updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+- deleted_at TIMESTAMP NULL (for soft deletes)
+
+================================================================================
+API RESPONSE FORMATS
+================================================================================
+
+### Success Response
 {
     "success": true,
     "message": "Operation successful",
     "data": { ... }
 }
-```
 
-### Error
-```json
+### Error Response
 {
     "success": false,
     "message": "Error description",
-    "errors": ["field" => "error message"]
+    "errors": {
+        "field": ["Error message"]
+    }
 }
-```
 
-When generating code, follow these patterns exactly. Ask for clarification if the requirement is ambiguous.
+### Paginated Response
+{
+    "success": true,
+    "message": "Data retrieved",
+    "data": [...],
+    "meta": {
+        "current_page": 1,
+        "per_page": 15,
+        "total": 100,
+        "total_pages": 7
+    }
+}
+
+================================================================================
+SECURITY CHECKLIST
+================================================================================
+
+ALWAYS DO:
+[x] Use $security->post() / $security->get() for all input
+[x] Validate CSRF token on state-changing requests (POST, PUT, DELETE)
+[x] Use prepared statements (BaseModel handles this)
+[x] Escape output with htmlspecialchars() in views
+[x] Hash passwords with Auth::hashPassword()
+[x] Validate and sanitize file uploads
+[x] Use HTTPS in production
+[x] Set secure session cookie flags
+[x] Implement rate limiting on sensitive endpoints
+
+NEVER DO:
+[x] Concatenate user input into SQL queries
+[x] Echo user input without escaping
+[x] Store passwords in plain text
+[x] Trust client-side validation alone
+[x] Expose sensitive data in error messages
+[x] Use eval() or similar functions
+[x] Allow unrestricted file uploads
+
+================================================================================
+ENVIRONMENT VARIABLES (.env)
+================================================================================
+
+# Application
+APP_NAME=VelocityPHP
+APP_ENV=development
+APP_DEBUG=true
+APP_URL=http://localhost:8001
+
+# Database
+DB_HOST=localhost
+DB_NAME=velocity_db
+DB_USER=root
+DB_PASS=
+
+# Security
+JWT_SECRET=your-256-bit-secret-key-here
+SESSION_LIFETIME=120
+
+# Rate Limiting
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_REQUESTS=60
+
+# Cache
+CACHE_DRIVER=file
+CACHE_TTL=3600
+
+================================================================================
+COMMON PATTERNS
+================================================================================
+
+### Authentication Check in Controller
+public function dashboard($params = [], $isAjax = false)
+{
+    if (!Auth::check()) {
+        return $this->redirect('/login');
+    }
+    
+    $user = Auth::user();
+    return $this->view('pages/dashboard/index', ['user' => $user]);
+}
+
+### CRUD with Caching
+public function show($params = [], $isAjax = false)
+{
+    $id = (int) ($params['id'] ?? 0);
+    $cache = FileCache::getInstance();
+    
+    $item = $cache->remember("item_{$id}", function() use ($id) {
+        $model = new ItemModel();
+        return $model->find($id);
+    }, 3600);
+    
+    if (!$item) {
+        return $this->jsonError('Not found', [], 404);
+    }
+    
+    return $this->jsonSuccess('Item loaded', $item);
+}
+
+### Cache Invalidation on Update
+public function update($params = [], $isAjax = false)
+{
+    $id = (int) ($params['id'] ?? 0);
+    $model = new ItemModel();
+    $cache = FileCache::getInstance();
+    
+    // Update database
+    $model->update($id, $data);
+    
+    // Invalidate cache
+    $cache->delete("item_{$id}", 'data');
+    
+    return $this->jsonSuccess('Updated');
+}
+
+### File Upload with Validation
+public function uploadAvatar($params = [], $isAjax = false)
+{
+    if (!isset($_FILES['avatar'])) {
+        return $this->jsonError('No file uploaded', [], 400);
+    }
+    
+    $uploader = new FileUpload([
+        'upload_path' => PUBLIC_PATH . '/uploads/avatars',
+        'max_size' => 2 * 1024 * 1024, // 2MB
+        'allowed_types' => ['image'],
+        'create_thumbnail' => true
+    ]);
+    
+    $result = $uploader->upload($_FILES['avatar']);
+    
+    if (!$result['success']) {
+        return $this->jsonError($result['error'], [], 400);
+    }
+    
+    // Update user avatar
+    $model = new UserModel();
+    $model->update(Auth::id(), ['avatar' => $result['filename']]);
+    
+    return $this->jsonSuccess('Avatar uploaded', ['path' => $result['path']]);
+}
+
+When generating code, follow these patterns exactly. Ask for clarification if requirements are ambiguous.
 ```
 
 ---
 
 ## Usage Guide
 
-### In Cursor
+### Cursor IDE
 
 1. Open Settings → Rules for AI
 2. Paste the prompt above
-3. Cursor will now understand VelocityPhp patterns
+3. Cursor will understand VelocityPHP patterns
 
-### In Claude
+### Claude
 
 1. Start a new conversation
 2. Paste the prompt as your first message
 3. Then ask your question
 
-### In ChatGPT
+### ChatGPT
 
-1. Create a custom GPT or use the system prompt
+1. Create a Custom GPT or use system prompt
 2. Paste the prompt
 3. Begin development conversation
 
-### In GitHub Copilot
+### GitHub Copilot
 
 1. Create `.github/copilot-instructions.md`
 2. Paste the prompt content
@@ -340,84 +770,65 @@ When generating code, follow these patterns exactly. Ask for clarification if th
 
 ### Creating a New Feature
 
-**You:** Create a blog posts feature with CRUD operations
+**You:** Create a products feature with CRUD and caching
 
-**AI Response:** I'll create the blog posts feature following VelocityPhp patterns:
+**AI:** I'll create the products feature following VelocityPHP patterns:
 
-1. Create `PostModel` in `src/models/`
-2. Create `PostsController` in `src/controllers/`
-3. Add routes in `src/routes/web.php`
-4. Create views in `src/views/pages/posts/`
+1. `src/models/ProductModel.php` - Model with caching methods
+2. `src/Api/V1/Controllers/ProductController.php` - REST API controller
+3. `src/Api/V1/routes.php` - Add API routes
+4. `src/views/pages/products/index.php` - Product listing page
 
-[AI generates proper code following the conventions]
-
-### Debugging
-
-**You:** My authentication isn't working. Users can't log in.
-
-**AI Response:** Let me check the authentication flow in VelocityPhp:
-
-1. Check `AuthController@login` method
-2. Verify `Auth::login()` is being called correctly
-3. Check session configuration
-4. Verify password hashing matches
-
-[AI provides specific debugging steps]
+[AI generates proper code following conventions]
 
 ### Adding API Endpoint
 
-**You:** Add an API endpoint to search users by name
+**You:** Add a search endpoint for users
 
-**AI Response:** I'll add a search endpoint following the API pattern:
-
+**AI:**
 ```php
-// In routes/web.php
-RouteCollection::group(['prefix' => 'api', 'middleware' => ['AuthMiddleware']], function() {
-    RouteCollection::get('/users/search', 'UsersController@search');
-});
+// In src/Api/V1/routes.php
+$router->get('/users/search', 'UserController@search', ['auth' => true]);
 
-// In UsersController
-public function search($params = [], $isAjax = false)
+// In UserController
+public function search(): void
 {
-    $security = \App\Core\Security\SecurityService::getInstance();
-    $query = $security->get('q', '', 'string');
+    $query = $this->getQueryParam('q', '');
     
     if (strlen($query) < 2) {
-        return $this->jsonError('Query too short', [], 400);
+        $this->errorResponse('Query too short', 400);
+        return;
     }
     
     $model = new \App\Models\UserModel();
     $users = $model->searchByName($query);
     
-    return $this->jsonSuccess('Results', ['users' => $users]);
+    $this->successResponse('Search results', ['users' => $users]);
 }
 ```
 
----
+### Implementing Caching
 
-## Customizing the Prompt
+**You:** Add caching to the product detail page
 
-Add project-specific context:
-
-```
-## Project-Specific Rules
-
-- This is an e-commerce site
-- All prices are in USD, stored as cents (integer)
-- Users have roles: customer, vendor, admin
-- Products belong to categories (many-to-many)
-- Orders have statuses: pending, paid, shipped, delivered, cancelled
-```
-
-Add custom conventions:
-
-```
-## Custom Conventions
-
-- All API responses include `request_id` for tracking
-- File uploads go to `uploads/{year}/{month}/`
-- Soft deletes are used for users and orders
-- All dates are stored in UTC
+**AI:**
+```php
+public function show(int $id): void
+{
+    $cache = \App\Utils\FileCache::getInstance();
+    
+    $product = $cache->remember("product_{$id}", function() use ($id) {
+        $model = new \App\Models\ProductModel();
+        return $model->find($id);
+    }, 3600); // Cache for 1 hour
+    
+    if (!$product) {
+        $this->errorResponse('Product not found', 404);
+        return;
+    }
+    
+    $this->successResponse('Product retrieved', $product);
+}
 ```
 
 ---
@@ -425,75 +836,106 @@ Add custom conventions:
 ## Quick Reference Card
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    VELOCITYPHP QUICK REF                    │
-├─────────────────────────────────────────────────────────────┤
-│ NAMESPACE MAPPING                                           │
-│   App\Controllers\*  →  src/controllers/*Controller.php    │
-│   App\Models\*       →  src/models/*Model.php              │
-│   App\Utils\*        →  src/utils/*.php                    │
-│   App\Middleware\*   →  src/middleware/*Middleware.php     │
-├─────────────────────────────────────────────────────────────┤
-│ CLI COMMANDS                                                │
-│   php start.php           Start server (port 8001)         │
-│   php seed.php all        Seed database                    │
-│   php tests/TestRunner.php Run tests                       │
-│   php api-docs.php        Show routes                      │
-├─────────────────────────────────────────────────────────────┤
-│ CONTROLLER METHODS                                          │
-│   $this->view($tpl, $data)        Render view              │
-│   $this->jsonSuccess($msg, $data) JSON success             │
-│   $this->jsonError($msg, $err)    JSON error               │
-│   $this->validate($rules, $data)  Validate                 │
-├─────────────────────────────────────────────────────────────┤
-│ MODEL METHODS                                               │
-│   $m->find($id)                   Find by ID               │
-│   $m->where($cond)                Find by conditions       │
-│   $m->create($data)               Insert                   │
-│   $m->update($id, $data)          Update                   │
-│   $m->delete($id)                 Delete                   │
-│   $m->paginate($page, $perPage)   Paginated results        │
-├─────────────────────────────────────────────────────────────┤
-│ SECURITY                                                    │
-│   $security->post('f', '', 'type')  Sanitized POST         │
-│   $security->validateCsrfToken()    CSRF check             │
-│   Auth::login($email, $pass)        Login                  │
-│   Auth::check()                     Is logged in?          │
-│   Auth::user()                      Current user           │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    VELOCITYPHP QUICK REFERENCE                  │
+├─────────────────────────────────────────────────────────────────┤
+│ NAMESPACE MAPPING                                               │
+│   App\Controllers\*      → src/controllers/*Controller.php     │
+│   App\Models\*           → src/models/*Model.php               │
+│   App\Utils\*            → src/utils/*.php                     │
+│   App\Api\V1\Controllers\* → src/Api/V1/Controllers/*.php      │
+├─────────────────────────────────────────────────────────────────┤
+│ CLI COMMANDS                                                    │
+│   php start.php              Start server (port 8001)          │
+│   php seed.php all           Seed database                     │
+│   php tests/ApiTestRunner.php  Run API tests                   │
+│   php tests/CacheTestRunner.php Run cache tests                │
+├─────────────────────────────────────────────────────────────────┤
+│ CONTROLLER METHODS (Web)                                        │
+│   $this->view($tpl, $data)        Render view                  │
+│   $this->jsonSuccess($msg, $data) JSON success                 │
+│   $this->jsonError($msg, $err)    JSON error                   │
+│   $this->validate($rules, $data)  Validate                     │
+├─────────────────────────────────────────────────────────────────┤
+│ CONTROLLER METHODS (API v1)                                     │
+│   $this->successResponse($msg, $data, $code)                   │
+│   $this->errorResponse($msg, $code, $errors)                   │
+│   $this->getJsonBody()            Get request body             │
+│   $this->getQueryParam($key)      Get query param              │
+├─────────────────────────────────────────────────────────────────┤
+│ MODEL METHODS                                                   │
+│   $m->find($id)                   Find by ID                   │
+│   $m->where($cond)                Find by conditions           │
+│   $m->create($data)               Insert                       │
+│   $m->update($id, $data)          Update                       │
+│   $m->delete($id)                 Delete                       │
+│   $m->paginate($page, $perPage)   Paginated results            │
+├─────────────────────────────────────────────────────────────────┤
+│ CACHE METHODS                                                   │
+│   $cache->set($key, $data, $type, $ttl)                        │
+│   $cache->get($key, $type)                                     │
+│   $cache->remember($key, $callback, $ttl)                      │
+│   $cache->delete($key, $type)                                  │
+│   $cache->invalidatePattern('prefix_*')                        │
+├─────────────────────────────────────────────────────────────────┤
+│ SECURITY                                                        │
+│   $security->post('f', '', 'type')  Sanitized POST             │
+│   $security->validateCsrfToken()    CSRF check                 │
+│   Auth::login($email, $pass)        Login                      │
+│   Auth::check()                     Is logged in?              │
+│   Auth::user()                      Current user               │
+├─────────────────────────────────────────────────────────────────┤
+│ FILE-BASED ROUTING                                              │
+│   src/views/pages/index/index.php      → /                     │
+│   src/views/pages/about/index.php      → /about                │
+│   src/views/pages/[name]/index.php     → /[name]               │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Troubleshooting AI Responses
 
-### AI generates Laravel code instead of VelocityPhp
+### AI generates Laravel code
 
 Add to prompt:
 ```
-IMPORTANT: This is VelocityPhp, NOT Laravel. Do not use:
-- Eloquent (use BaseModel instead)
+CRITICAL: This is VelocityPHP, NOT Laravel. Do NOT use:
+- Eloquent ORM (use BaseModel)
 - Blade templates (use plain PHP)
 - Artisan commands (use CLI scripts)
-- Facades (use direct class instantiation)
+- Facades (use direct instantiation)
+- app/ directory (use src/)
 ```
 
 ### AI uses Composer packages
 
 Add to prompt:
 ```
-CONSTRAINT: No external Composer packages. This framework runs on
-shared hosting without Composer. Use built-in PHP functions only.
+CONSTRAINT: No Composer packages allowed. This framework runs on
+shared hosting without Composer. Use only built-in PHP functions.
 ```
 
-### AI creates wrong directory structure
+### AI ignores caching
 
 Add to prompt:
 ```
-DIRECTORY RULES:
-- Controllers MUST be in src/controllers/
-- Models MUST be in src/models/
-- Views MUST be in src/views/
-- Routes MUST be in src/routes/web.php
-Do NOT create app/ directory. Use src/ only.
+PERFORMANCE: Always consider caching for:
+- Database queries that don't change frequently
+- API responses
+- User-specific data
+Use FileCache with appropriate TTL values.
+```
+
+---
+
+## Test Commands Summary
+
+```bash
+# All tests should pass 100%
+php tests/ApiTestRunner.php     # 50/50 tests
+php tests/HttpTestRunner.php    # 24/24 tests  
+php tests/CacheTestRunner.php   # 48/48 tests
+
+# Total: 122 tests, 100% pass rate
 ```

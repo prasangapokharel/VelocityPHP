@@ -3,16 +3,17 @@
  * FileCache - Per-User/IP File-Based Caching System
  * 
  * Flow:
- *   Database → (only when data changes) → Cache (file per user/ip) → (fast read) → Client
+ *   Database -> (only when data changes) -> Cache (PHP array file per user/ip) -> (fast read via include) -> Client
  * 
  * Features:
  * - One cache file per user/IP for fast reads
  * - Auto-invalidation on data updates
  * - No database queries for cached data
- * - Simple JSON file storage
+ * - PHP array storage (opcache optimized, faster than JSON)
+ * - Security hardened (directory traversal protection, validated types)
  * 
  * @package VelocityPhp
- * @version 1.0.0
+ * @version 2.1.0
  */
 
 namespace App\Utils;
@@ -24,7 +25,7 @@ class FileCache
     private int $defaultTtl = 3600; // 1 hour default
     
     /**
-     * Cache directories
+     * Cache directories (whitelist - only these are allowed)
      */
     private array $directories = [
         'users' => 'users',      // Per-user cache
@@ -34,11 +35,19 @@ class FileCache
         'api' => 'api',          // API response cache
     ];
     
+    /**
+     * Maximum key length to prevent filesystem issues
+     */
+    private const MAX_KEY_LENGTH = 200;
+    
     private function __construct()
     {
         $this->basePath = defined('BASE_PATH') 
             ? BASE_PATH . '/src/velocache'
             : dirname(__DIR__) . '/velocache';
+            
+        // Ensure basePath is absolute and normalized
+        $this->basePath = realpath($this->basePath) ?: $this->basePath;
             
         $this->ensureDirectories();
     }
@@ -73,6 +82,7 @@ class FileCache
     
     /**
      * Get cached data - returns null if not exists or expired
+     * Uses PHP include for maximum performance (opcache optimized)
      * 
      * @param string $key Cache key
      * @param string $type Cache type (users, ip, data, pages, api)
@@ -82,16 +92,31 @@ class FileCache
     {
         $file = $this->getFilePath($key, $type);
         
-        if (!file_exists($file)) {
+        if (!file_exists($file) || !is_file($file)) {
             return null;
         }
         
-        $content = @file_get_contents($file);
-        if ($content === false) {
+        // Security: Verify file is within our cache directory
+        $realFile = realpath($file);
+        $realBase = realpath($this->basePath);
+        if ($realFile === false || $realBase === false || strpos($realFile, $realBase) !== 0) {
             return null;
         }
         
-        $data = json_decode($content, true);
+        // Ensure BASE_PATH is defined for cache file security check
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(dirname(__DIR__)));
+        }
+        
+        // Use include for PHP array - opcache optimized
+        // Suppress warnings and use error handling
+        try {
+            $data = @include $realFile;
+        } catch (\Throwable $e) {
+            // Log error if logger available, return null
+            return null;
+        }
+        
         if (!is_array($data)) {
             return null;
         }
@@ -102,11 +127,11 @@ class FileCache
             return null;
         }
         
-        return $data['_data'] ?? $data;
+        return $data['_data'] ?? null;
     }
     
     /**
-     * Set cache data
+     * Set cache data using PHP array format
      * 
      * @param string $key Cache key
      * @param mixed $data Data to cache
@@ -119,19 +144,53 @@ class FileCache
         $file = $this->getFilePath($key, $type);
         $ttl = $ttl ?? $this->defaultTtl;
         
+        // Validate TTL
+        $ttl = max(1, min($ttl, 86400 * 365)); // Between 1 second and 1 year
+        
         $cacheData = [
             '_data' => $data,
             '_created' => time(),
             '_expires' => time() + $ttl,
+            '_key' => $this->sanitizeKey($key), // Store original key for debugging
         ];
         
-        $result = @file_put_contents(
-            $file, 
-            json_encode($cacheData, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
-            LOCK_EX
-        );
+        // Generate PHP array content with security header
+        $content = "<?php\n";
+        $content .= "// VelocityPHP Cache File - DO NOT EDIT\n";
+        $content .= "// Generated: " . date('Y-m-d H:i:s') . "\n";
+        $content .= "defined('BASE_PATH') || exit('Direct access not allowed');\n";
+        $content .= "return " . var_export($cacheData, true) . ";\n";
         
-        return $result !== false;
+        // Ensure directory exists
+        $dir = dirname($file);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+        
+        // Write atomically using temp file
+        $tempFile = $file . '.tmp.' . uniqid();
+        $result = @file_put_contents($tempFile, $content, LOCK_EX);
+        
+        if ($result === false) {
+            @unlink($tempFile);
+            return false;
+        }
+        
+        // Atomic rename
+        if (!@rename($tempFile, $file)) {
+            @unlink($tempFile);
+            return false;
+        }
+        
+        // Set proper permissions (readable by owner/group only)
+        @chmod($file, 0640);
+        
+        // Invalidate opcache for this file to ensure fresh data on next read
+        if (function_exists('opcache_invalidate')) {
+            @opcache_invalidate($file, true);
+        }
+        
+        return true;
     }
     
     /**
@@ -142,6 +201,10 @@ class FileCache
         $file = $this->getFilePath($key, $type);
         
         if (file_exists($file)) {
+            // Invalidate opcache before deleting
+            if (function_exists('opcache_invalidate')) {
+                @opcache_invalidate($file, true);
+            }
             return @unlink($file);
         }
         
@@ -349,9 +412,12 @@ class FileCache
     {
         $this->deleteUser($userId);
         
-        // Also delete any related caches
-        $pattern = $this->basePath . '/data/user_' . $userId . '_*.json';
+        // Also delete any related caches (now .php files)
+        $pattern = $this->basePath . '/data/user_' . $userId . '_*.php';
         foreach (glob($pattern) as $file) {
+            if (function_exists('opcache_invalidate')) {
+                @opcache_invalidate($file, true);
+            }
             @unlink($file);
         }
     }
@@ -362,10 +428,13 @@ class FileCache
     public function invalidatePattern(string $pattern, string $type = 'data'): int
     {
         $dir = $this->basePath . '/' . ($this->directories[$type] ?? 'data');
-        $fullPattern = $dir . '/' . $pattern . '.json';
+        $fullPattern = $dir . '/' . $pattern . '.php';
         
         $count = 0;
         foreach (glob($fullPattern) as $file) {
+            if (function_exists('opcache_invalidate')) {
+                @opcache_invalidate($file, true);
+            }
             if (@unlink($file)) {
                 $count++;
             }
@@ -386,7 +455,14 @@ class FileCache
         }
         
         $count = 0;
-        foreach (glob($dir . '/*.json') as $file) {
+        foreach (glob($dir . '/*.php') as $file) {
+            // Skip .gitignore
+            if (basename($file) === '.gitignore') {
+                continue;
+            }
+            if (function_exists('opcache_invalidate')) {
+                @opcache_invalidate($file, true);
+            }
             if (@unlink($file)) {
                 $count++;
             }
@@ -418,12 +494,19 @@ class FileCache
             $path = $this->basePath . '/' . $dir;
             if (!is_dir($path)) continue;
             
-            foreach (glob($path . '/*.json') as $file) {
-                $content = @file_get_contents($file);
-                if ($content === false) continue;
+            foreach (glob($path . '/*.php') as $file) {
+                // Skip .gitignore
+                if (basename($file) === '.gitignore') {
+                    continue;
+                }
                 
-                $data = json_decode($content, true);
+                $data = @include $file;
+                if (!is_array($data)) continue;
+                
                 if (isset($data['_expires']) && $data['_expires'] < time()) {
+                    if (function_exists('opcache_invalidate')) {
+                        @opcache_invalidate($file, true);
+                    }
                     if (@unlink($file)) {
                         $count++;
                     }
@@ -439,13 +522,67 @@ class FileCache
     // =========================================================================
     
     /**
-     * Get file path for cache key
+     * Validate cache type against whitelist
+     * 
+     * @param string $type Cache type
+     * @return string Validated type (defaults to 'data' if invalid)
+     */
+    private function validateType(string $type): string
+    {
+        return isset($this->directories[$type]) ? $type : 'data';
+    }
+    
+    /**
+     * Sanitize cache key to prevent directory traversal and filesystem issues
+     * 
+     * @param string $key Raw cache key
+     * @return string Safe cache key
+     */
+    private function sanitizeKey(string $key): string
+    {
+        // Remove any path traversal attempts
+        $key = str_replace(['..', '/', '\\', "\0"], '', $key);
+        
+        // Only allow safe characters
+        $safeKey = preg_replace('/[^a-zA-Z0-9_-]/', '_', $key);
+        
+        // Limit key length
+        if (strlen($safeKey) > self::MAX_KEY_LENGTH) {
+            // Use hash for very long keys
+            $safeKey = substr($safeKey, 0, 100) . '_' . md5($key);
+        }
+        
+        // Ensure key is not empty
+        return $safeKey ?: 'default';
+    }
+    
+    /**
+     * Get file path for cache key (now .php extension)
+     * Security: Validates type and sanitizes key to prevent directory traversal
      */
     private function getFilePath(string $key, string $type): string
     {
-        $dir = $this->directories[$type] ?? 'data';
-        $safeKey = preg_replace('/[^a-zA-Z0-9_-]/', '_', $key);
-        return $this->basePath . '/' . $dir . '/' . $safeKey . '.json';
+        $type = $this->validateType($type);
+        $dir = $this->directories[$type];
+        $safeKey = $this->sanitizeKey($key);
+        
+        $path = $this->basePath . '/' . $dir . '/' . $safeKey . '.php';
+        
+        // Final security check: ensure path is within basePath
+        $realBase = realpath($this->basePath . '/' . $dir);
+        if ($realBase === false) {
+            // Directory might not exist yet, use basePath check
+            $realBase = $this->basePath . '/' . $dir;
+        }
+        
+        // Ensure the generated path starts with the base directory
+        $pathDir = dirname($path);
+        if (strpos($pathDir, $realBase) !== 0 && strpos($pathDir, $this->basePath . '/' . $dir) !== 0) {
+            // Fallback to safe default if path escapes base directory
+            return $this->basePath . '/data/invalid_key_' . md5($key) . '.php';
+        }
+        
+        return $path;
     }
     
     /**
@@ -463,7 +600,7 @@ class FileCache
             $path = $this->basePath . '/' . $dir;
             if (!is_dir($path)) continue;
             
-            $files = glob($path . '/*.json');
+            $files = glob($path . '/*.php');
             $count = count($files);
             $size = 0;
             
