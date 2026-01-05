@@ -40,15 +40,18 @@ if (!headers_sent() && extension_loaded('zlib') && !ini_get('zlib.output_compres
 // Core Initialization
 // ============================================================================
 
-// Start session with optimized settings
-session_start([
-    'cookie_httponly' => true,
-    'cookie_samesite' => 'Lax',
-    'use_strict_mode' => true,
-    'use_only_cookies' => true,
-    'sid_length' => 48,
-    'sid_bits_per_character' => 6
-]);
+// Note: Session is started by SecurityService with hardened settings
+// Start session early for CSRF protection (will be managed by SecurityService later)
+if (session_status() === PHP_SESSION_NONE) {
+    session_start([
+        'cookie_httponly' => true,
+        'cookie_samesite' => 'Lax',
+        'use_strict_mode' => true,
+        'use_only_cookies' => true,
+        'sid_length' => 48,
+        'sid_bits_per_character' => 6
+    ]);
+}
 
 // Define base paths
 define('BASE_PATH', dirname(__DIR__));
@@ -91,9 +94,15 @@ if (file_exists(BASE_PATH . '/.env')) {
 // Autoloader & Dependencies
 // ============================================================================
 
-// Load autoloader
-require_once SRC_PATH . '/utils/Autoloader.php';
-\App\Utils\Autoloader::register();
+// Use Composer autoloader if available, otherwise use custom autoloader
+$composerAutoload = BASE_PATH . '/vendor/autoload.php';
+if (file_exists($composerAutoload)) {
+    require_once $composerAutoload;
+} else {
+    // Fallback to custom PSR-4 autoloader (for shared hosting without Composer)
+    require_once SRC_PATH . '/utils/Autoloader.php';
+    \App\Utils\Autoloader::register();
+}
 
 // Initialize Config (needed for cache)
 \App\Config\Config::init();
@@ -154,20 +163,32 @@ set_exception_handler(function(\Throwable $exception) use ($config) {
 });
 
 // ============================================================================
-// Security Headers
+// Security Service Initialization
 // ============================================================================
 
-// Set security headers
+// Initialize the SecurityService (singleton)
+$security = \App\Core\Security\SecurityService::getInstance();
+
+// Send comprehensive security headers
 if (!headers_sent()) {
-    header('X-Frame-Options: SAMEORIGIN');
-    header('X-Content-Type-Options: nosniff');
-    header('X-XSS-Protection: 1; mode=block');
-    header('Referrer-Policy: strict-origin-when-cross-origin');
+    $security->sendSecurityHeaders();
     
+    // Additional CSP in production
     if ($config['env'] === 'production') {
-        header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+        $security->sendCspHeader();
     }
 }
+
+// Rate limiting / DDoS protection (configurable)
+// Default: 100 requests per minute, 5 minute block for repeat offenders
+$security->setRateLimit(
+    (int)($config['rate_limit_requests'] ?? 100),
+    (int)($config['rate_limit_window'] ?? 60),
+    (int)($config['rate_limit_block'] ?? 300)
+);
+
+// Enforce rate limit (exits with 429 if exceeded)
+$security->enforceRateLimit();
 
 // ============================================================================
 // Request Processing
@@ -195,24 +216,33 @@ if ($isAjax) {
 // CSRF Protection
 // ============================================================================
 
-if ($requestMethod === 'POST' || $requestMethod === 'PUT' || $requestMethod === 'DELETE') {
-    if ($isAjax) {
-        $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
-        if (!hash_equals($_SESSION['csrf_token'] ?? '', $csrfToken)) {
-            if ($isAjax) {
-                http_response_code(403);
-                echo json_encode(['error' => 'CSRF token validation failed']);
-                exit;
-            }
-            die('CSRF token validation failed');
-        }
+// Handle HTTP method spoofing for PUT/DELETE from forms
+if ($requestMethod === 'POST' && isset($_POST['_method'])) {
+    $spoofedMethod = strtoupper($_POST['_method']);
+    if (in_array($spoofedMethod, ['PUT', 'PATCH', 'DELETE'])) {
+        $requestMethod = $spoofedMethod;
     }
 }
 
-// Generate CSRF token if not exists
-if (!isset($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+// CSRF Protection for all state-changing requests (using SecurityService)
+// Skip CSRF for API routes (they use Bearer token authentication)
+$isApiRequest = strpos($requestUri, '/api/') === 0;
+
+if (!$isApiRequest && in_array($requestMethod, ['POST', 'PUT', 'PATCH', 'DELETE'])) {
+    if (!$security->validateCsrfToken()) {
+        http_response_code(403);
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => false, 'error' => 'CSRF token validation failed']);
+        } else {
+            echo '<h1>403 Forbidden</h1><p>CSRF token validation failed. <a href="javascript:history.back()">Go back</a></p>';
+        }
+        exit;
+    }
 }
+
+// Generate CSRF token if not exists (using SecurityService)
+$security->generateCsrfToken();
 
 // ============================================================================
 // Route Dispatching
@@ -235,6 +265,18 @@ try {
         header('X-Content-Type-Options: nosniff');
         header('X-Frame-Options: SAMEORIGIN');
         header('X-XSS-Protection: 1; mode=block');
+    }
+    
+    // ========================================================================
+    // API V1 Routing (handle before web routes)
+    // ========================================================================
+    if (strpos($requestUri, '/api/v1/') === 0) {
+        // Load API routes
+        $apiRouter = require SRC_PATH . '/Api/V1/routes.php';
+        
+        // Dispatch API request (this will exit after response)
+        $apiRouter->dispatch($requestUri, $requestMethod);
+        exit;
     }
     
     // Route the request

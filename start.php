@@ -1,172 +1,137 @@
 <?php
 /**
  * VelocityPhp Development Server
- * Ultra-fast local development environment
+ * Simple, clean local development environment
+ * 
+ * Usage: php start.php [port]
  * 
  * @package VelocityPhp
  * @version 1.0.0
  */
 
 // Configuration
-$host = 'localhost';
+$host = '0.0.0.0';
 $port = 8001;
 $documentRoot = __DIR__ . '/public';
-
-// Colors for terminal output (Windows compatible)
-$colors = [
-    'green' => "\033[32m",
-    'yellow' => "\033[33m",
-    'blue' => "\033[34m",
-    'cyan' => "\033[36m",
-    'magenta' => "\033[35m",
-    'red' => "\033[31m",
-    'bold' => "\033[1m",
-    'reset' => "\033[0m"
-];
-
-// Clear screen for cleaner output
-echo "\033[2J\033[H";
-
-// Banner
-echo "\n";
-echo $colors['cyan'] . $colors['bold'];
-echo "╔════════════════════════════════════════════════════════════════╗\n";
-echo "║                                                                ║\n";
-echo "║                  ⚡ VELOCITYPHP FRAMEWORK ⚡                    ║\n";
-echo "║                                                                ║\n";
-echo "║              Ultra-Fast Production-Ready Framework            ║\n";
-echo "║                                                                ║\n";
-echo "╚════════════════════════════════════════════════════════════════╝\n";
-echo $colors['reset'];
-echo "\n";
-
-// Check PHP version
-$phpVersion = phpversion();
-$requiredVersion = '7.4.0';
-echo $colors['blue'] . "PHP Version: " . $colors['reset'] . $phpVersion;
-
-if (version_compare($phpVersion, $requiredVersion, '>=')) {
-    echo " " . $colors['green'] . "✓\n" . $colors['reset'];
-} else {
-    echo " " . $colors['red'] . "✗\n" . $colors['reset'];
-    echo $colors['red'] . "⚠️  Error: PHP {$requiredVersion} or higher is required\n" . $colors['reset'];
-    exit(1);
-}
-
-// Check required extensions
-$requiredExtensions = ['pdo', 'json', 'mbstring'];
-$missingExtensions = [];
-
-foreach ($requiredExtensions as $ext) {
-    if (!extension_loaded($ext)) {
-        $missingExtensions[] = $ext;
-    }
-}
-
-if (!empty($missingExtensions)) {
-    echo $colors['red'] . "⚠️  Missing required extensions: " . implode(', ', $missingExtensions) . "\n" . $colors['reset'];
-    exit(1);
-}
-
-// Check recommended extensions
-$recommendedExtensions = ['opcache', 'apcu'];
-echo "\n" . $colors['blue'] . "Performance Extensions:\n" . $colors['reset'];
-
-foreach ($recommendedExtensions as $ext) {
-    $loaded = extension_loaded($ext);
-    echo "  • " . ucfirst($ext) . ": ";
-    if ($loaded) {
-        echo $colors['green'] . "✓ enabled\n" . $colors['reset'];
-    } else {
-        echo $colors['yellow'] . "✗ not installed (recommended for production)\n" . $colors['reset'];
-    }
-}
-
-// Check if port is available
-echo "\n" . $colors['blue'] . "Checking port availability...\n" . $colors['reset'];
-$connection = @fsockopen($host, $port);
-
-if (is_resource($connection)) {
-    fclose($connection);
-    echo $colors['red'] . "\n⚠️  Port {$port} is already in use!\n" . $colors['reset'];
-    echo "Please choose a different port or stop the service using port {$port}.\n\n";
-    
-    // Try alternative ports
-    $alternativePorts = [8080, 8888, 3000, 5000, 8002, 8003];
-    echo $colors['cyan'] . "Available alternative ports:\n" . $colors['reset'];
-    
-    foreach ($alternativePorts as $altPort) {
-        $altConnection = @fsockopen($host, $altPort);
-        if (!is_resource($altConnection)) {
-            echo $colors['green'] . "  ✓ Port {$altPort} is available\n" . $colors['reset'];
-            echo $colors['cyan'] . "  Run: " . $colors['yellow'] . "php start.php {$altPort}\n\n" . $colors['reset'];
-        } else {
-            fclose($altConnection);
-        }
-    }
-    exit(1);
-}
-
-echo $colors['green'] . "✓ Port {$port} is available\n" . $colors['reset'];
+$routerFile = __DIR__ . '/router.php';
 
 // Allow custom port from command line
-if (isset($argv[1])) {
-    $customPort = (int)$argv[1];
-    if ($customPort > 0 && $customPort <= 65535) {
-        $port = $customPort;
-        echo $colors['cyan'] . "Using custom port: {$port}\n" . $colors['reset'];
-    }
+if (isset($argv[1]) && is_numeric($argv[1])) {
+    $port = (int)$argv[1];
 }
 
-// Server URL
-$serverUrl = "http://{$host}:{$port}";
+/**
+ * Get network IP address (Windows compatible, no socket extension required)
+ */
+function getNetworkIP(): ?string
+{
+    // Method 1: Windows ipconfig
+    if (PHP_OS_FAMILY === 'Windows') {
+        $output = @shell_exec('ipconfig 2>nul');
+        if ($output && preg_match_all('/IPv4[^:]*:\s*(\d+\.\d+\.\d+\.\d+)/i', $output, $matches)) {
+            foreach ($matches[1] as $ip) {
+                if ($ip !== '127.0.0.1' && strpos($ip, '192.168.') === 0) {
+                    return $ip;
+                }
+            }
+            foreach ($matches[1] as $ip) {
+                if ($ip !== '127.0.0.1' && strpos($ip, '10.') === 0) {
+                    return $ip;
+                }
+            }
+            foreach ($matches[1] as $ip) {
+                if ($ip !== '127.0.0.1') {
+                    return $ip;
+                }
+            }
+        }
+    } else {
+        // Linux/Mac
+        $output = @shell_exec('hostname -I 2>/dev/null');
+        if ($output) {
+            $ips = explode(' ', trim($output));
+            foreach ($ips as $ip) {
+                if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) && $ip !== '127.0.0.1') {
+                    return $ip;
+                }
+            }
+        }
+    }
+    
+    // Method 2: gethostbyname fallback
+    $hostname = @gethostname();
+    if ($hostname) {
+        $ip = @gethostbyname($hostname);
+        if ($ip !== $hostname && $ip !== '127.0.0.1') {
+            return $ip;
+        }
+    }
+    
+    return null;
+}
 
-// Display server information
-echo "\n";
-echo $colors['green'] . $colors['bold'] . "✓ Server Starting...\n" . $colors['reset'];
-echo "\n";
-echo $colors['blue'] . "┌────────────────────────────────────────────────────────────────┐\n" . $colors['reset'];
-echo $colors['blue'] . "│ " . $colors['reset'];
-echo "Framework:      " . $colors['cyan'] . $colors['bold'] . "VelocityPhp v1.0.0" . $colors['reset'] . "\n";
-echo $colors['blue'] . "│ " . $colors['reset'];
-echo "Document Root:  " . $colors['yellow'] . $documentRoot . $colors['reset'] . "\n";
-echo $colors['blue'] . "│ " . $colors['reset'];
-echo "Server Address: " . $colors['green'] . $colors['bold'] . $serverUrl . $colors['reset'] . "\n";
-echo $colors['blue'] . "│ " . $colors['reset'];
-echo "Environment:    " . $colors['magenta'] . "Development" . $colors['reset'] . "\n";
-echo $colors['blue'] . "└────────────────────────────────────────────────────────────────┘\n" . $colors['reset'];
-echo "\n";
+// Clear screen
+echo "\033[2J\033[H";
 
-// Instructions
-echo $colors['cyan'] . $colors['bold'] . "Quick Links:\n" . $colors['reset'];
-echo "  🏠 Home:      " . $colors['blue'] . "{$serverUrl}/" . $colors['reset'] . "\n";
-echo "  📊 Dashboard: " . $colors['blue'] . "{$serverUrl}/dashboard" . $colors['reset'] . "\n";
-echo "  👥 Users:     " . $colors['blue'] . "{$serverUrl}/users" . $colors['reset'] . "\n";
-echo "  📝 About:     " . $colors['blue'] . "{$serverUrl}/about" . $colors['reset'] . "\n";
+// Simple banner
 echo "\n";
+echo "\033[1;36m";
+echo "  ╔═══════════════════════════════════════════════════════╗\n";
+echo "  ║           VELOCITYPHP DEVELOPMENT SERVER              ║\n";
+echo "  ╚═══════════════════════════════════════════════════════╝\n";
+echo "\033[0m\n";
 
-// Performance tips
-echo $colors['yellow'] . $colors['bold'] . "⚡ Performance Tips:\n" . $colors['reset'];
-echo $colors['yellow'] . "  • Enable OPcache for production (50-100% faster)\n" . $colors['reset'];
-echo $colors['yellow'] . "  • Use APCu for enhanced caching\n" . $colors['reset'];
-echo $colors['yellow'] . "  • Set APP_ENV=production in .env for production mode\n" . $colors['reset'];
+// Check PHP version
+echo "  PHP Version: " . phpversion();
+if (version_compare(phpversion(), '7.4.0', '>=')) {
+    echo " \033[32m✓\033[0m\n";
+} else {
+    echo " \033[31m✗ (7.4+ required)\033[0m\n";
+    exit(1);
+}
+
+// Check if port is in use
+$socket = @fsockopen('127.0.0.1', $port, $errno, $errstr, 1);
+if ($socket) {
+    fclose($socket);
+    echo "\n\033[31m  ✗ Port {$port} is already in use!\033[0m\n\n";
+    echo "  Solutions:\n";
+    echo "    1. Kill the process: \033[33mnpx kill-port {$port}\033[0m\n";
+    echo "    2. Use different port: \033[33mphp start.php 8080\033[0m\n\n";
+    
+    // Show available ports
+    $altPorts = [8080, 8888, 3000, 5000];
+    foreach ($altPorts as $alt) {
+        $test = @fsockopen('127.0.0.1', $alt, $e, $es, 1);
+        if (!$test) {
+            echo "    → Port {$alt} is available\n";
+        } else {
+            fclose($test);
+        }
+    }
+    echo "\n";
+    exit(1);
+}
+
+// Get network IP
+$networkIP = getNetworkIP();
+
+// Display URLs
 echo "\n";
-
-echo $colors['cyan'] . "Press " . $colors['bold'] . "Ctrl+C" . $colors['reset'] . $colors['cyan'] . " to stop the server\n" . $colors['reset'];
+echo "  \033[1;32m✓ Server Ready\033[0m\n\n";
+echo "  \033[1mLocal:\033[0m    \033[36mhttp://localhost:{$port}\033[0m\n";
+if ($networkIP) {
+    echo "  \033[1mNetwork:\033[0m  \033[36mhttp://{$networkIP}:{$port}\033[0m\n";
+}
 echo "\n";
-echo $colors['green'] . $colors['bold'] . "════════════════════════════════════════════════════════════════\n" . $colors['reset'];
+echo "  \033[90mDocument Root: {$documentRoot}\033[0m\n";
+echo "  \033[90mPress Ctrl+C to stop\033[0m\n";
 echo "\n";
+echo "  \033[33m───────────────────────────────────────────────────────\033[0m\n\n";
 
-// Change to public directory
-chdir($documentRoot);
+// Build and run command
+$cmd = file_exists($routerFile)
+    ? sprintf('php -S %s:%d -t "%s" "%s"', $host, $port, $documentRoot, $routerFile)
+    : sprintf('php -S %s:%d -t "%s"', $host, $port, $documentRoot);
 
-// Start server command
-$command = sprintf(
-    'php -S %s:%d -t %s',
-    escapeshellarg($host),
-    $port,
-    escapeshellarg($documentRoot)
-);
-
-// Execute server
-passthru($command);
+passthru($cmd);

@@ -423,6 +423,11 @@ abstract class BaseModel
             $data['updated_at'] = date('Y-m-d H:i:s');
         }
         
+        // Return early if no data to update
+        if (empty($data)) {
+            return true;
+        }
+        
         $setClauses = [];
         $values = [];
         

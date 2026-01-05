@@ -1,13 +1,14 @@
 <?php
 /**
  * Authentication Service
- * Handles user authentication and session management
+ * Wrapper around Auth utility for service-oriented architecture
  * 
  * @package VelocityPhp
  */
 
 namespace App\Services;
 
+use App\Utils\Auth;
 use App\Models\UserModel;
 
 class AuthService
@@ -22,41 +23,19 @@ class AuthService
     /**
      * Authenticate user with email and password
      */
-    public function login($email, $password)
+    public function login($email, $password, $remember = false)
     {
-        // Find user by email
-        $user = $this->userModel->findByEmail($email);
-        
-        if (!$user) {
+        if (Auth::login($email, $password, $remember)) {
             return [
-                'success' => false,
-                'message' => 'Invalid credentials'
+                'success' => true,
+                'message' => 'Login successful',
+                'user' => $this->sanitizeUser(Auth::user())
             ];
         }
-        
-        // Verify password
-        if (!password_verify($password, $user['password'])) {
-            return [
-                'success' => false,
-                'message' => 'Invalid credentials'
-            ];
-        }
-        
-        // Check if user is active
-        if ($user['status'] !== 'active') {
-            return [
-                'success' => false,
-                'message' => 'Account is not active'
-            ];
-        }
-        
-        // Create session
-        $this->createSession($user);
         
         return [
-            'success' => true,
-            'message' => 'Login successful',
-            'user' => $this->sanitizeUser($user)
+            'success' => false,
+            'message' => 'Invalid credentials'
         ];
     }
     
@@ -77,30 +56,27 @@ class AuthService
         
         // Create user
         try {
-            $userId = $this->userModel->createUser([
+            $userId = $this->userModel->create([
                 'name' => $data['name'],
                 'email' => $data['email'],
-                'password' => $data['password'],
-                'role' => 'user',
+                'password' => Auth::hashPassword($data['password']),
+                'role' => $data['role'] ?? 'user',
                 'status' => 'active'
             ]);
             
-            // Get created user
-            $user = $this->userModel->find($userId);
-            
-            // Create session
-            $this->createSession($user);
+            // Auto-login after registration
+            Auth::login($data['email'], $data['password']);
             
             return [
                 'success' => true,
                 'message' => 'Registration successful',
-                'user' => $this->sanitizeUser($user)
+                'user' => $this->sanitizeUser(Auth::user())
             ];
             
         } catch (\Exception $e) {
             return [
                 'success' => false,
-                'message' => 'Registration failed'
+                'message' => 'Registration failed: ' . $e->getMessage()
             ];
         }
     }
@@ -110,9 +86,7 @@ class AuthService
      */
     public function logout()
     {
-        // Destroy session
-        session_unset();
-        session_destroy();
+        Auth::logout();
         
         return [
             'success' => true,
@@ -125,7 +99,7 @@ class AuthService
      */
     public function check()
     {
-        return isset($_SESSION['user_id']) && !empty($_SESSION['user_id']);
+        return Auth::check();
     }
     
     /**
@@ -133,17 +107,15 @@ class AuthService
      */
     public function user()
     {
-        if (!$this->check()) {
-            return null;
-        }
-        
-        if (!isset($_SESSION['user_data'])) {
-            // Fetch fresh user data
-            $user = $this->userModel->find($_SESSION['user_id']);
-            $_SESSION['user_data'] = $this->sanitizeUser($user);
-        }
-        
-        return $_SESSION['user_data'];
+        return $this->sanitizeUser(Auth::user());
+    }
+    
+    /**
+     * Get user ID
+     */
+    public function id()
+    {
+        return Auth::id();
     }
     
     /**
@@ -151,17 +123,19 @@ class AuthService
      */
     public function updatePassword($userId, $currentPassword, $newPassword)
     {
-        // Verify current password
-        if (!$this->userModel->verifyPassword($userId, $currentPassword)) {
+        $user = $this->userModel->find($userId);
+        
+        if (!$user || !password_verify($currentPassword, $user['password'])) {
             return [
                 'success' => false,
                 'message' => 'Current password is incorrect'
             ];
         }
         
-        // Update password
         try {
-            $this->userModel->updatePassword($userId, $newPassword);
+            $this->userModel->update($userId, [
+                'password' => Auth::hashPassword($newPassword)
+            ]);
             
             return [
                 'success' => true,
@@ -174,22 +148,6 @@ class AuthService
                 'message' => 'Failed to update password'
             ];
         }
-    }
-    
-    /**
-     * Create user session
-     */
-    private function createSession($user)
-    {
-        // Regenerate session ID for security
-        session_regenerate_id(true);
-        
-        // Store user data
-        $_SESSION['user_id'] = $user['id'];
-        $_SESSION['user_email'] = $user['email'];
-        $_SESSION['user_role'] = $user['role'];
-        $_SESSION['user_data'] = $this->sanitizeUser($user);
-        $_SESSION['logged_in_at'] = time();
     }
     
     /**
@@ -210,11 +168,7 @@ class AuthService
      */
     public function hasRole($role)
     {
-        if (!$this->check()) {
-            return false;
-        }
-        
-        return $_SESSION['user_role'] === $role;
+        return Auth::hasRole($role);
     }
     
     /**
@@ -222,6 +176,6 @@ class AuthService
      */
     public function isAdmin()
     {
-        return $this->hasRole('admin');
+        return Auth::hasRole('admin');
     }
 }

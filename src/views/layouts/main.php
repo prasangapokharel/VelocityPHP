@@ -24,9 +24,6 @@
     
     <!-- Main App Container -->
     <div id="app">
-        <!-- Navigation -->
-        <?php include VIEW_PATH . '/components/navbar.php'; ?>
-        
         <!-- Main Content Area -->
         <main id="app-content">
             <?php echo $content; ?>

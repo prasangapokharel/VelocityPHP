@@ -40,7 +40,7 @@ class Router
                 return $key !== '_' && strpos($key, '_') !== 0;
             }, ARRAY_FILTER_USE_KEY);
             
-            $cacheKey = $cache->generateKey($uri, $method, $getParams);
+            $cacheKey = $cache->generateKey($uri, $method, $getParams, $isAjax);
             $cached = $cache->get($cacheKey);
             if ($cached !== null) {
                 if (is_string($cached)) {
@@ -94,14 +94,29 @@ class Router
                 list($controller, $method) = explode('@', $action);
                 
                 // Map controller method to view path
-                // HomeController@prasanga -> index/prasanga
                 // HomeController@index -> index/index
+                // HomeController@documentation -> documentation/index (top-level pages)
+                // OtherController@method -> other/method
+                $methodLower = strtolower($method);
+                
                 if (strtolower($controller) === 'homecontroller') {
-                    $viewPath = 'index/' . strtolower($method);
+                    // For HomeController, check if it's a top-level page first
+                    if ($methodLower === 'index') {
+                        $viewPath = 'index/index';
+                    } else {
+                        // Check if top-level page exists (e.g., documentation/index.php)
+                        $topLevelPath = VIEW_PATH . '/pages/' . $methodLower . '/index.php';
+                        if (is_file($topLevelPath)) {
+                            $viewPath = $methodLower;
+                        } else {
+                            // Fall back to index/method
+                            $viewPath = 'index/' . $methodLower;
+                        }
+                    }
                 } else {
                     // For other controllers, use controller name as directory
                     $controllerName = str_replace('Controller', '', $controller);
-                    $viewPath = strtolower($controllerName) . '/' . strtolower($method);
+                    $viewPath = strtolower($controllerName) . '/' . $methodLower;
                 }
                 
                 // Render the view using the determined path
@@ -186,7 +201,7 @@ class Router
             $getParams = array_filter($_GET ?? [], function($key) {
                 return $key !== '_' && strpos($key, '_') !== 0;
             }, ARRAY_FILTER_USE_KEY);
-            $cacheKey = $cache->generateKey($uri, $method, $getParams);
+            $cacheKey = $cache->generateKey($uri, $method, $getParams, $isAjax);
         }
         
         // Check route cache first
@@ -311,7 +326,8 @@ class Router
      */
     private function findRoute($uri)
     {
-        $uri = $uri === '/' ? '' : $uri;
+        // Normalize: remove leading slash for path matching
+        $uri = ($uri === '/' || $uri === '') ? '' : ltrim($uri, '/');
         
         // Fast path: Check for API routes first (most common in modern apps)
         if (strpos($uri, 'api/') === 0) {

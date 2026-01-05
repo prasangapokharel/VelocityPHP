@@ -1,10 +1,9 @@
 /**
- * Core AJAX Router & SPA Handler
- * Provides zero-refresh navigation with browser history API
- * Handles all dynamic content loading and state management
+ * VelocityPhp Core AJAX Router & SPA Handler
+ * Zero-refresh navigation with browser history API
  * 
- * @package VelocityPHP
- * @version 1.0.0
+ * @package VelocityPhp
+ * @version 1.1.0
  */
 
 (function($) {
@@ -15,32 +14,31 @@
         config: {
             contentSelector: '#app-content',
             loadingClass: 'loading',
-            transitionDuration: 300,
-            cacheViews: false, // Disabled for now to prevent wrong content caching
-            enableHistory: true
+            transitionDuration: 200,
+            cacheViews: false,
+            enableHistory: true,
+            debug: false
         },
 
         cache: {},
         currentRoute: null,
         isLoading: false,
+        pendingRequests: new Map(),
 
         /**
          * Initialize the application
          */
         init: function() {
+            this.config.debug = typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE;
             this.setupAjaxDefaults();
             this.bindNavigationEvents();
             this.bindFormEvents();
             this.setupHistoryAPI();
             this.setupCSRFToken();
-            this.preloadCriticalAssets();
-            
-            // Mark initial route
             this.currentRoute = window.location.pathname;
             
-            // Silent initialization - no console logs in production
-            if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
-                console.log('🚀 NativeApp initialized - Zero-refresh mode active');
+            if (this.config.debug) {
+                console.log('%c⚡ VelocityPhp Initialized', 'color: #10b981; font-size: 14px; font-weight: bold');
             }
         },
 
@@ -48,6 +46,8 @@
          * Configure jQuery AJAX defaults
          */
         setupAjaxDefaults: function() {
+            const self = this;
+            
             $.ajaxSetup({
                 cache: false,
                 timeout: 30000,
@@ -58,32 +58,18 @@
 
             // Global AJAX error handler
             $(document).ajaxError(function(event, jqxhr, settings, thrownError) {
-                // Completely ignore prefetch requests with query strings (?_=timestamp)
-                if (settings.url.includes('?_=') && settings.type === 'GET') {
-                    return; // Silent ignore - no errors shown
-                }
-                
-                // Skip error handling for routes that don't exist
-                if (settings.url.includes('/profile') || settings.url.includes('/404')) {
+                // Ignore prefetch/preload requests
+                if (settings.url.includes('?_=') || settings.isPrefetch) {
                     return;
                 }
                 
-                // Only handle actual user-triggered errors
+                // Handle specific HTTP errors
                 if (jqxhr.status === 403) {
-                    NativeApp.showError('Access denied. Please login again.');
-                } else if (jqxhr.status === 404) {
-                    // Only load 404 page for actual 404s, not prefetch errors
-                    if (!settings.url.includes('?_=')) {
-                        NativeApp.loadRoute('/404', false);
-                    }
-                } else if (jqxhr.status === 500) {
-                    // Only show error for POST/PUT/DELETE or GET without query string
-                    if (settings.type !== 'GET' || !settings.url.includes('?_=')) {
-                        NativeApp.showError('Server error. Please try again.');
-                    }
+                    self.showError('Access denied.');
+                } else if (jqxhr.status === 0 && thrownError === 'abort') {
+                    // Request was aborted - ignore
+                    return;
                 }
-                
-                // NO console logging - completely silent for production
             });
         },
 
@@ -107,13 +93,17 @@
         bindNavigationEvents: function() {
             const self = this;
 
-            // Delegate click events for dynamic links
-            $(document).on('click', 'a[href]:not([target="_blank"]):not([data-no-ajax])', function(e) {
+            $(document).on('click', 'a[href]:not([target="_blank"]):not([data-no-ajax]):not([download])', function(e) {
                 const $link = $(this);
                 const href = $link.attr('href');
 
-                // Skip external links, anchors, and javascript: links
-                if (self.isExternalLink(href) || href.startsWith('#') || href.startsWith('javascript:')) {
+                // Skip external links, anchors, javascript, mailto, tel
+                if (!href || 
+                    self.isExternalLink(href) || 
+                    href.startsWith('#') || 
+                    href.startsWith('javascript:') ||
+                    href.startsWith('mailto:') ||
+                    href.startsWith('tel:')) {
                     return;
                 }
 
@@ -121,14 +111,11 @@
                 self.navigate(href, true);
             });
 
-            // Handle back/forward browser buttons
+            // Handle browser back/forward
             if (this.config.enableHistory) {
                 window.addEventListener('popstate', function(e) {
-                    if (e.state && e.state.route) {
-                        self.loadRoute(e.state.route, false);
-                    } else {
-                        self.loadRoute(window.location.pathname, false);
-                    }
+                    const route = e.state?.route || window.location.pathname;
+                    self.loadRoute(route, false);
                 });
             }
         },
@@ -138,25 +125,23 @@
          */
         bindFormEvents: function() {
             const self = this;
-            const submittingForms = new WeakSet();
 
             $(document).on('submit', 'form[data-ajax]', function(e) {
                 e.preventDefault();
                 
-                if (submittingForms.has(this)) {
+                const $form = $(this);
+                const $submitBtn = $form.find('[type="submit"]');
+                
+                // Prevent double submission
+                if ($submitBtn.prop('disabled')) {
                     return;
                 }
                 
-                submittingForms.add(this);
-                
-                const $form = $(this);
-                const method = $form.attr('method') || 'POST';
+                const method = ($form.attr('method') || 'POST').toUpperCase();
                 const action = $form.attr('action') || window.location.pathname;
                 const formData = new FormData(this);
 
-                self.submitForm(action, method, formData, $form).always(function() {
-                    submittingForms.delete($form[0]);
-                });
+                self.submitForm(action, method, formData, $form);
             });
         },
 
@@ -164,8 +149,7 @@
          * Setup HTML5 History API
          */
         setupHistoryAPI: function() {
-            if (this.config.enableHistory && window.history && window.history.pushState) {
-                // Replace current state with initial route
+            if (this.config.enableHistory && window.history?.pushState) {
                 history.replaceState(
                     { route: window.location.pathname },
                     document.title,
@@ -178,12 +162,15 @@
          * Navigate to a new route
          */
         navigate: function(url, updateHistory) {
+            // Normalize URL
+            url = url.split('?')[0]; // Remove query string for comparison
+            
             // Prevent duplicate navigation
-            if (url === this.currentRoute && !url.includes('?')) {
+            if (url === this.currentRoute) {
                 return;
             }
 
-            // Clear cache for this specific route to ensure fresh content
+            // Clear cache for this route to ensure fresh content
             delete this.cache[url];
             
             this.loadRoute(url, updateHistory);
@@ -195,9 +182,9 @@
         loadRoute: function(url, updateHistory) {
             const self = this;
 
-            // Prevent concurrent requests
-            if (this.isLoading) {
-                return;
+            // Abort any pending request for same URL
+            if (this.pendingRequests.has(url)) {
+                this.pendingRequests.get(url).abort();
             }
 
             // Check cache first
@@ -209,51 +196,47 @@
             this.isLoading = true;
             this.showLoading();
 
-            $.ajax({
+            const xhr = $.ajax({
                 url: url,
                 method: 'GET',
                 dataType: 'json',
                 success: function(response) {
-                    // Cache the response
                     if (self.config.cacheViews) {
                         self.cache[url] = response;
                     }
-
                     self.renderContent(response, url, updateHistory);
                 },
                 error: function(jqxhr, status, error) {
                     self.hideLoading();
                     
-                    // Try to parse response if available
+                    if (status === 'abort') return;
+                    
+                    // Try to parse error response
                     let response = null;
                     try {
-                        if (jqxhr.responseText) {
-                            response = JSON.parse(jqxhr.responseText);
-                        }
-                    } catch(e) {
-                        // Not JSON - ignore
-                    }
+                        response = jqxhr.responseJSON || JSON.parse(jqxhr.responseText);
+                    } catch(e) {}
                     
                     if (jqxhr.status === 404) {
-                        // Use the clean 404 page from server response
-                        if (response && response.html) {
+                        if (response?.html) {
                             self.renderContent(response, url, updateHistory);
                         } else {
-                            // Fallback clean 404
                             self.renderContent({
-                                html: '<div class="container text-center py-2xl"><h1 class="text-4xl font-bold mb-md">404</h1><p class="text-lg mb-xl text-neutral-600">Page not found</p><a href="/" class="btn btn-primary btn-md">Go Home</a></div>',
+                                html: '<div class="container text-center py-20"><h1 class="text-4xl font-bold mb-4">404</h1><p class="text-lg mb-8 text-gray-600">Page not found</p><a href="/" class="inline-block px-6 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-700">Go Home</a></div>',
                                 title: '404 - Page Not Found'
                             }, url, updateHistory);
                         }
                     } else {
-                        // Show simple error message
-                        self.showError('Something went wrong. Please try again.');
+                        self.showError(response?.message || 'Failed to load page. Please try again.');
                     }
                 },
                 complete: function() {
                     self.isLoading = false;
+                    self.pendingRequests.delete(url);
                 }
             });
+
+            this.pendingRequests.set(url, xhr);
         },
 
         /**
@@ -263,29 +246,19 @@
             const self = this;
             const $content = $(this.config.contentSelector);
 
-            // Fade out current content
             $content.fadeOut(this.config.transitionDuration, function() {
-                // Update content
                 if (response.html) {
                     $content.html(response.html);
                 }
 
-                // Update title
                 if (response.title) {
                     document.title = response.title;
                 }
 
-                // Update meta tags
                 if (response.meta) {
                     self.updateMetaTags(response.meta);
                 }
 
-                // Execute inline scripts
-                if (response.scripts) {
-                    self.executeScripts(response.scripts);
-                }
-
-                // Update browser history
                 if (updateHistory && self.config.enableHistory) {
                     history.pushState(
                         { route: url },
@@ -294,21 +267,14 @@
                     );
                 }
 
-                // Update current route
                 self.currentRoute = url;
 
-                // Fade in new content
                 $content.fadeIn(self.config.transitionDuration, function() {
                     self.hideLoading();
-                    
-                    // Trigger custom event for page loaded
                     $(document).trigger('page:loaded', [url, response]);
-                    
-                    // Scroll to top
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 });
 
-                // Re-bind events for new content
                 self.bindDynamicEvents();
             });
         },
@@ -321,42 +287,33 @@
             const $submitBtn = $form.find('[type="submit"]');
             const originalBtnText = $submitBtn.html();
 
-            if ($submitBtn.prop('disabled')) {
-                return $.Deferred().reject({status: 400, responseJSON: {message: 'Form is already submitting'}});
-            }
-
-            $submitBtn.prop('disabled', true).html('<span class="spinner"></span> Loading...');
+            $submitBtn.prop('disabled', true).html('<span class="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span> Loading...');
 
             return $.ajax({
                 url: url,
-                method: method.toUpperCase(),
+                method: method,
                 data: formData,
                 processData: false,
                 contentType: false,
                 dataType: 'json',
                 success: function(response) {
                     if (response.success) {
-                        // Show success message
                         self.showSuccess(response.message || 'Success!');
 
-                        // Redirect if specified
                         if (response.redirect) {
                             setTimeout(function() {
                                 self.navigate(response.redirect, true);
                             }, 1000);
                         }
 
-                        // Reset form if specified
                         if (response.resetForm) {
                             $form[0].reset();
                         }
 
-                        // Trigger custom event
                         $(document).trigger('form:success', [response, $form]);
                     } else {
                         self.showError(response.message || 'An error occurred');
                         
-                        // Show validation errors
                         if (response.errors) {
                             self.showValidationErrors($form, response.errors);
                         }
@@ -364,7 +321,11 @@
                 },
                 error: function(jqxhr) {
                     const response = jqxhr.responseJSON;
-                    self.showError(response?.message || 'Form submission failed');
+                    self.showError(response?.message || response?.error || 'Form submission failed');
+                    
+                    if (response?.errors) {
+                        self.showValidationErrors($form, response.errors);
+                    }
                 },
                 complete: function() {
                     $submitBtn.prop('disabled', false).html(originalBtnText);
@@ -376,16 +337,15 @@
          * Show validation errors on form fields
          */
         showValidationErrors: function($form, errors) {
-            // Clear previous errors
             $form.find('.error-message').remove();
-            $form.find('.error').removeClass('error');
+            $form.find('.error, .border-red-500').removeClass('error border-red-500');
 
-            // Display new errors
             $.each(errors, function(field, messages) {
                 const $field = $form.find('[name="' + field + '"]');
-                $field.addClass('error');
+                $field.addClass('error border-red-500');
                 
-                const errorHtml = '<div class="error-message">' + messages.join('<br>') + '</div>';
+                const errorHtml = '<div class="error-message text-red-500 text-sm mt-1">' + 
+                    (Array.isArray(messages) ? messages.join('<br>') : messages) + '</div>';
                 $field.after(errorHtml);
             });
         },
@@ -405,44 +365,32 @@
         },
 
         /**
-         * Execute inline scripts from AJAX response
-         */
-        executeScripts: function(scripts) {
-            if (Array.isArray(scripts)) {
-                scripts.forEach(function(script) {
-                    try {
-                        eval(script);
-                    } catch (e) {
-                        // Silent error handling - no console logs
-                    }
-                });
-            }
-        },
-
-        /**
          * Bind events for dynamically loaded content
          */
         bindDynamicEvents: function() {
-            // Execute any inline scripts in the newly loaded content
             const $content = $(this.config.contentSelector);
+            
+            // Execute inline scripts safely
             $content.find('script').each(function() {
                 try {
-                    // Create a new script element and execute it
-                    const script = document.createElement('script');
                     if (this.src) {
+                        const script = document.createElement('script');
                         script.src = this.src;
-                    } else {
+                        document.body.appendChild(script);
+                    } else if (this.textContent.trim()) {
+                        // Create and execute script safely
+                        const script = document.createElement('script');
                         script.textContent = this.textContent;
+                        document.body.appendChild(script);
+                        document.body.removeChild(script);
                     }
-                    document.body.appendChild(script);
-                    // Clean up
-                    setTimeout(() => script.remove(), 100);
                 } catch (e) {
-                    console.error('Script execution error:', e);
+                    if (window.NativeApp.config.debug) {
+                        console.error('Script error:', e);
+                    }
                 }
             });
             
-            // Trigger custom event for other scripts to hook into
             $(document).trigger('content:updated');
         },
 
@@ -452,12 +400,12 @@
         isExternalLink: function(url) {
             if (!url) return false;
             
-            const link = document.createElement('a');
-            link.href = url;
-            
-            return link.hostname !== window.location.hostname ||
-                   url.startsWith('http://') ||
-                   url.startsWith('https://');
+            try {
+                const link = new URL(url, window.location.origin);
+                return link.hostname !== window.location.hostname;
+            } catch(e) {
+                return url.startsWith('http://') || url.startsWith('https://');
+            }
         },
 
         /**
@@ -465,19 +413,6 @@
          */
         clearCache: function() {
             this.cache = {};
-            if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
-                console.log('🧹 Navigation cache cleared');
-            }
-        },
-
-        /**
-         * Clear cache for specific route
-         */
-        clearRouteCache: function(url) {
-            delete this.cache[url];
-            if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
-                console.log('🧹 Cache cleared for:', url);
-            }
         },
 
         /**
@@ -485,8 +420,6 @@
          */
         showLoading: function() {
             $('body').addClass(this.config.loadingClass);
-            
-            // Show loading bar if exists
             $('#loading-bar').addClass('active');
         },
 
@@ -495,8 +428,6 @@
          */
         hideLoading: function() {
             $('body').removeClass(this.config.loadingClass);
-            
-            // Hide loading bar
             $('#loading-bar').removeClass('active');
         },
 
@@ -520,51 +451,25 @@
         showNotification: function(message, type) {
             type = type || 'info';
             
-            const $notification = $('<div class="notification notification-' + type + '">' + message + '</div>');
+            // Remove existing notifications
+            $('.notification').remove();
+            
+            const bgColor = type === 'success' ? 'bg-green-500' : 
+                           type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+            
+            const $notification = $('<div class="notification fixed top-4 right-4 px-6 py-3 rounded-lg text-white shadow-lg transform translate-x-full transition-transform duration-300 z-50 ' + bgColor + '">' + message + '</div>');
             $('body').append($notification);
             
             setTimeout(function() {
-                $notification.addClass('show');
+                $notification.removeClass('translate-x-full');
             }, 10);
             
             setTimeout(function() {
-                $notification.removeClass('show');
+                $notification.addClass('translate-x-full');
                 setTimeout(function() {
                     $notification.remove();
                 }, 300);
-            }, 3000);
-        },
-
-        /**
-         * Preload critical assets
-         */
-        preloadCriticalAssets: function() {
-            // Preload commonly used routes
-            const criticalRoutes = ['/dashboard', '/profile'];
-            
-            criticalRoutes.forEach(function(route) {
-                if (route !== window.location.pathname) {
-                    // Silently preload in background
-                    $.ajax({
-                        url: route,
-                        method: 'GET',
-                        dataType: 'json',
-                        success: function(response) {
-                            NativeApp.cache[route] = response;
-                        }
-                    });
-                }
-            });
-        },
-
-        /**
-         * Clear view cache
-         */
-        clearCache: function() {
-            this.cache = {};
-            if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
-                console.log('View cache cleared');
-            }
+            }, 4000);
         },
 
         /**
@@ -581,20 +486,13 @@
             },
 
             post: function(url, data) {
-                const xhr = $.ajax({
+                return $.ajax({
                     url: url,
                     method: 'POST',
                     data: JSON.stringify(data),
                     contentType: 'application/json',
                     dataType: 'json'
                 });
-                
-                xhr.always(function() {
-                    if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
-                    }
-                });
-                
-                return xhr;
             },
 
             put: function(url, data) {
@@ -608,15 +506,10 @@
             },
 
             delete: function(url) {
-                const token = $('meta[name="csrf-token"]').attr('content');
                 return $.ajax({
                     url: url,
                     method: 'DELETE',
-                    dataType: 'json',
-                    headers: {
-                        'X-CSRF-TOKEN': token || '',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
+                    dataType: 'json'
                 });
             }
         }
@@ -625,43 +518,18 @@
     // Auto-initialize when DOM is ready
     $(document).ready(function() {
         NativeApp.init();
-        
-        // Enable detailed console logging
-        // Silent initialization - only log in debug mode
-        if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
-            console.log('%c🚀 NativeApp Initialized', 'color: #10b981; font-size: 16px; font-weight: bold');
-            console.log('%cDebug Mode: ON', 'color: #3b82f6');
-            console.log('%cZero-refresh navigation active', 'color: #10b981');
-        }
     });
 
 })(jQuery);
 
-// Global error handler for uncaught errors
+// Global error handler
 window.addEventListener('error', function(event) {
-    // Completely silent error handling - no console logs
-    // Ignore errors from external scripts (browser extensions, etc.)
+    // Ignore errors from browser extensions
     if (event.filename && (
-        event.filename.includes('spoofer') || 
         event.filename.includes('extension') ||
         event.filename.includes('chrome-extension') ||
         event.filename.includes('moz-extension')
     )) {
-        return; // Ignore external script errors
+        return;
     }
-    
-    // Only show user-friendly error for real application errors
-    // Don't show errors on page refresh/load
-    if (window.NativeApp && event.filename && 
-        (event.filename.includes('app.js') || event.filename.includes('/assets/')) &&
-        !window.location.href.includes('?_=')) {
-        NativeApp.showError('An error occurred. Please try again.');
-    }
-});
-
-// Global AJAX error handler
-$(document).ajaxError(function(event, jqxhr, settings, thrownError) {
-    // Only log in debug mode
-    // Silent error handling - no console logs in production
-    // Errors are handled gracefully by the application
 });

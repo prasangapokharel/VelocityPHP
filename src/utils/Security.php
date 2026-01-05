@@ -174,12 +174,26 @@ class Security
     public static function detectSqlInjection($value)
     {
         $patterns = [
+            // SQL keywords followed by suspicious characters
             '/(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|EXECUTE)\b)/i',
-            '/(\b(UNION|OR|AND)\b.*\b(SELECT|INSERT|UPDATE|DELETE)\b)/i',
-            '/(;\s*(DROP|DELETE|UPDATE|INSERT))/i',
+            // UNION-based injection
+            '/(\b(UNION)\b.*\b(SELECT)\b)/i',
+            // OR/AND based injection with quotes
+            "/('\s*(OR|AND)\s*')/i",
+            "/('\s*(OR|AND)\s+[\d\w]+\s*=)/i",
+            // Classic OR 1=1 pattern
+            "/('\s*OR\s*'?\d+'\s*=\s*'?\d)/i",
+            "/(OR\s+\d+\s*=\s*\d)/i",
+            // Semicolon followed by SQL command
+            '/(;\s*(DROP|DELETE|UPDATE|INSERT|SELECT))/i',
+            // Comment injection
             "/(['\"]\s*;\s*--)/i",
-            "/(--\s*)/i",
-            "/(\/\*.*?\*\/)/i"
+            "/(--\s*$)/m",
+            "/(\/\*.*?\*\/)/is",
+            // Hex encoded values (often used in injection)
+            '/(0x[0-9a-fA-F]+)/i',
+            // SLEEP/BENCHMARK (time-based blind injection)
+            '/(\bSLEEP\s*\(|\bBENCHMARK\s*\()/i',
         ];
         
         foreach ($patterns as $pattern) {

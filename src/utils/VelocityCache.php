@@ -254,9 +254,14 @@ class VelocityCache
         }
     }
     
-    public function generateKey($uri, $method = 'GET', $params = [])
+    public function generateKey($uri, $method = 'GET', $params = [], $isAjax = false)
     {
         $key = strtoupper($method) . ':' . $uri;
+        
+        // Include AJAX flag in cache key to separate AJAX and non-AJAX responses
+        if ($isAjax) {
+            $key .= ':ajax';
+        }
         
         if (!empty($params)) {
             $filteredParams = [];
