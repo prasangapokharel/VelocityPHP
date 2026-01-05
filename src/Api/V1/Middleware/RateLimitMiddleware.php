@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace App\Api\V1\Middleware;
 
+use App\Config\Config;
+use App\Utils\ErrorHandler;
+
 /**
  * API Rate Limiting Middleware
  * 
  * Limits API requests per IP/user to prevent abuse.
+ * Respects RATE_LIMIT_ENABLED and RATE_LIMIT_REQUESTS from .env
  * 
  * @package App\Api\V1
  */
@@ -16,14 +20,35 @@ final class RateLimitMiddleware
     private int $maxRequests;
     private int $windowSeconds;
     private string $storagePath;
+    private bool $enabled;
 
-    public function __construct(int $maxRequests = 60, int $windowSeconds = 60)
+    public function __construct(?int $maxRequests = null, int $windowSeconds = 60)
     {
-        $this->maxRequests = $maxRequests;
+        // Check if rate limiting is enabled in .env
+        $this->enabled = $this->isRateLimitEnabled();
+        
+        // Get max requests from .env or use default
+        $this->maxRequests = $maxRequests ?? (int) Config::env('RATE_LIMIT_REQUESTS', 60);
         $this->windowSeconds = $windowSeconds;
         $this->storagePath = defined('ROOT_PATH') 
             ? ROOT_PATH . '/storage/rate_limits'
-            : sys_get_temp_dir() . '/velocity_rate_limits';
+            : (defined('BASE_PATH') ? BASE_PATH . '/storage/rate_limits' : sys_get_temp_dir() . '/velocity_rate_limits');
+    }
+
+    /**
+     * Check if rate limiting is enabled
+     */
+    private function isRateLimitEnabled(): bool
+    {
+        $enabled = Config::env('RATE_LIMIT_ENABLED', true);
+        
+        // Handle string values from .env
+        if (is_string($enabled)) {
+            $enabled = strtolower($enabled);
+            return $enabled === 'true' || $enabled === '1' || $enabled === 'yes';
+        }
+        
+        return (bool) $enabled;
     }
 
     /**
@@ -31,6 +56,11 @@ final class RateLimitMiddleware
      */
     public function handle(): bool
     {
+        // Skip rate limiting if disabled
+        if (!$this->enabled) {
+            return true;
+        }
+
         $key = $this->getKey();
         $data = $this->getData($key);
 
@@ -61,8 +91,8 @@ final class RateLimitMiddleware
         // Check if exceeded
         if ($data['count'] > $this->maxRequests) {
             $retryAfter = $resetAt - $now;
-            header("Retry-After: {$retryAfter}");
-            $this->tooManyRequests($retryAfter);
+            $this->handleRateLimitExceeded($retryAfter);
+            return false;
         }
 
         return true;
@@ -139,17 +169,58 @@ final class RateLimitMiddleware
     }
 
     /**
-     * Send rate limit exceeded response
+     * Handle rate limit exceeded
      */
-    private function tooManyRequests(int $retryAfter): void
+    private function handleRateLimitExceeded(int $retryAfter): void
     {
-        http_response_code(429);
-        header('Content-Type: application/json');
-        echo json_encode([
-            'success' => false,
-            'message' => 'Too many requests',
-            'retry_after' => $retryAfter
-        ]);
-        exit;
+        header("Retry-After: {$retryAfter}");
+        
+        // Check if this is an API request
+        $isApi = $this->isApiRequest();
+        
+        if ($isApi) {
+            // API response - JSON
+            http_response_code(429);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => false,
+                'message' => 'Too many requests. Please slow down.',
+                'code' => 429,
+                'retry_after' => $retryAfter
+            ]);
+            exit;
+        }
+        
+        // Web request - use ErrorHandler
+        ErrorHandler::tooManyRequests($retryAfter, 'Too many requests. Please slow down.');
+    }
+
+    /**
+     * Check if this is an API request
+     */
+    private function isApiRequest(): bool
+    {
+        $uri = $_SERVER['REQUEST_URI'] ?? '';
+        return strpos($uri, '/api/') !== false;
+    }
+
+    /**
+     * Check if rate limiting is currently enabled
+     */
+    public function isEnabled(): bool
+    {
+        return $this->enabled;
+    }
+
+    /**
+     * Get current configuration
+     */
+    public function getConfig(): array
+    {
+        return [
+            'enabled' => $this->enabled,
+            'max_requests' => $this->maxRequests,
+            'window_seconds' => $this->windowSeconds,
+        ];
     }
 }

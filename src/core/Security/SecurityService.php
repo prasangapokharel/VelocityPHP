@@ -746,12 +746,35 @@ class SecurityService
     
     /**
      * Enforce rate limit (exits with 429 if exceeded)
+     * Respects RATE_LIMIT_ENABLED env variable
      */
     public function enforceRateLimit(?string $key = null): void
     {
+        // Check if rate limiting is enabled in .env
+        if (!$this->isRateLimitEnabled()) {
+            return;
+        }
+        
         if (!$this->checkRateLimit($key)) {
             $this->sendRateLimitResponse();
         }
+    }
+    
+    /**
+     * Check if rate limiting is enabled from .env
+     */
+    private function isRateLimitEnabled(): bool
+    {
+        $enabled = getenv('RATE_LIMIT_ENABLED');
+        
+        // Default to true if not set
+        if ($enabled === false || $enabled === '') {
+            return true;
+        }
+        
+        // Handle string values from .env
+        $enabled = strtolower(trim($enabled));
+        return $enabled === 'true' || $enabled === '1' || $enabled === 'yes';
     }
     
     /**
@@ -759,6 +782,12 @@ class SecurityService
      */
     private function sendRateLimitResponse(): void
     {
+        // Use ErrorHandler for clean error page
+        if (class_exists('\App\Utils\ErrorHandler')) {
+            \App\Utils\ErrorHandler::tooManyRequests($this->windowSeconds, 'Rate limit exceeded. Please try again later.');
+        }
+        
+        // Fallback if ErrorHandler not available
         http_response_code(429);
         header('Retry-After: ' . $this->windowSeconds);
         header('X-RateLimit-Limit: ' . $this->maxRequests);
@@ -767,13 +796,20 @@ class SecurityService
         if ($this->isAjax()) {
             header('Content-Type: application/json');
             echo json_encode([
-                'error' => 'Too Many Requests',
-                'message' => 'Rate limit exceeded. Please try again later.',
+                'success' => false,
+                'message' => 'Too Many Requests',
                 'retry_after' => $this->windowSeconds
             ]);
         } else {
-            echo '<h1>429 - Too Many Requests</h1>';
-            echo '<p>You have made too many requests. Please wait and try again.</p>';
+            // Render 429 error page
+            $errorFile = (defined('VIEW_PATH') ? VIEW_PATH : '') . '/errors/429.php';
+            if (is_file($errorFile)) {
+                $retryAfter = $this->windowSeconds;
+                include $errorFile;
+            } else {
+                echo '<h1>429 - Too Many Requests</h1>';
+                echo '<p>You have made too many requests. Please wait and try again.</p>';
+            }
         }
         exit;
     }

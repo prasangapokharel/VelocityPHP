@@ -1,14 +1,14 @@
 <?php
-$title = "404 - Page Not Found";
-$description = "The page you're looking for doesn't exist.";
+$title = "403 - Forbidden";
+$description = "You don't have permission to access this resource.";
 ?>
 <div class="min-h-[60vh] flex items-center justify-center px-lg">
     <div class="text-center max-w-md">
         <div class="mb-lg">
-            <span class="text-8xl font-bold text-blue-500">404</span>
+            <span class="text-8xl font-bold text-red-500">403</span>
         </div>
-        <h1 class="text-2xl font-bold text-neutral-900 mb-md">Page Not Found</h1>
-        <p class="text-neutral-600 mb-xl">The page you're looking for doesn't exist or has been moved. Please check the URL or navigate back home.</p>
+        <h1 class="text-2xl font-bold text-neutral-900 mb-md">Access Forbidden</h1>
+        <p class="text-neutral-600 mb-xl">You don't have permission to access this resource. If you believe this is an error, please contact the administrator.</p>
         <div class="flex gap-md justify-center">
             <a href="/" class="inline-flex items-center px-lg py-md bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 transition-colors">
                 <svg class="w-5 h-5 mr-sm" fill="none" stroke="currentColor" viewBox="0 0 24 24">

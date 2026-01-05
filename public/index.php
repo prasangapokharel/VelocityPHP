@@ -179,15 +179,16 @@ if (!headers_sent()) {
     }
 }
 
-// Rate limiting / DDoS protection (configurable)
-// Default: 100 requests per minute, 5 minute block for repeat offenders
-$security->setRateLimit(
-    (int)($config['rate_limit_requests'] ?? 100),
-    (int)($config['rate_limit_window'] ?? 60),
-    (int)($config['rate_limit_block'] ?? 300)
-);
+// Rate limiting / DDoS protection (configurable via .env)
+// RATE_LIMIT_ENABLED=true/false controls whether rate limiting is active
+// RATE_LIMIT_REQUESTS=60 controls max requests per minute
+$rateLimitRequests = (int)(getenv('RATE_LIMIT_REQUESTS') ?: $config['rate_limit_requests'] ?? 100);
+$rateLimitWindow = (int)($config['rate_limit_window'] ?? 60);
+$rateLimitBlock = (int)($config['rate_limit_block'] ?? 300);
 
-// Enforce rate limit (exits with 429 if exceeded)
+$security->setRateLimit($rateLimitRequests, $rateLimitWindow, $rateLimitBlock);
+
+// Enforce rate limit (exits with 429 if exceeded, respects RATE_LIMIT_ENABLED env)
 $security->enforceRateLimit();
 
 // ============================================================================
@@ -230,14 +231,7 @@ $isApiRequest = strpos($requestUri, '/api/') === 0;
 
 if (!$isApiRequest && in_array($requestMethod, ['POST', 'PUT', 'PATCH', 'DELETE'])) {
     if (!$security->validateCsrfToken()) {
-        http_response_code(403);
-        if ($isAjax) {
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['success' => false, 'error' => 'CSRF token validation failed']);
-        } else {
-            echo '<h1>403 Forbidden</h1><p>CSRF token validation failed. <a href="javascript:history.back()">Go back</a></p>';
-        }
-        exit;
+        \App\Utils\ErrorHandler::abort(403, 'CSRF token validation failed. Please refresh the page and try again.');
     }
 }
 
