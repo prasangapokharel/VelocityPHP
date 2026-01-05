@@ -40,7 +40,9 @@ class Router
                 return $key !== '_' && strpos($key, '_') !== 0;
             }, ARRAY_FILTER_USE_KEY);
             
-            $cacheKey = $cache->generateKey($uri, $method, $getParams, $isAjax);
+            // Get view file to include modification time in cache key
+            $viewFile = $cache->getViewFileForUri($uri);
+            $cacheKey = $cache->generateKey($uri, $method, $getParams, $isAjax, $viewFile);
             $cached = $cache->get($cacheKey);
             if ($cached !== null) {
                 if (is_string($cached)) {
@@ -201,7 +203,8 @@ class Router
             $getParams = array_filter($_GET ?? [], function($key) {
                 return $key !== '_' && strpos($key, '_') !== 0;
             }, ARRAY_FILTER_USE_KEY);
-            $cacheKey = $cache->generateKey($uri, $method, $getParams, $isAjax);
+            $viewFile = $cache->getViewFileForUri($uri);
+            $cacheKey = $cache->generateKey($uri, $method, $getParams, $isAjax, $viewFile);
         }
         
         // Check route cache first

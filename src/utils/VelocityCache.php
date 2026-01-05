@@ -254,7 +254,7 @@ class VelocityCache
         }
     }
     
-    public function generateKey($uri, $method = 'GET', $params = [], $isAjax = false)
+    public function generateKey($uri, $method = 'GET', $params = [], $isAjax = false, $viewFile = null)
     {
         $key = strtoupper($method) . ':' . $uri;
         
@@ -276,7 +276,40 @@ class VelocityCache
             }
         }
         
+        // Include file modification time to auto-invalidate cache when file changes
+        if ($viewFile && is_file($viewFile)) {
+            $mtime = filemtime($viewFile);
+            $key .= ':' . $mtime;
+        }
+        
         return $key;
+    }
+    
+    /**
+     * Get the view file path for a given URI
+     * Used to include file modification time in cache key
+     */
+    public function getViewFileForUri($uri)
+    {
+        // Normalize URI
+        $uri = trim($uri, '/');
+        if ($uri === '') {
+            $uri = 'index';
+        }
+        
+        // Check nested structure first: pages/jaya/index.php
+        $nestedPath = (defined('VIEW_PATH') ? VIEW_PATH : BASE_PATH . '/src/views') . '/pages/' . $uri . '/index.php';
+        if (is_file($nestedPath)) {
+            return $nestedPath;
+        }
+        
+        // Check flat structure: pages/jaya.php
+        $flatPath = (defined('VIEW_PATH') ? VIEW_PATH : BASE_PATH . '/src/views') . '/pages/' . $uri . '.php';
+        if (is_file($flatPath)) {
+            return $flatPath;
+        }
+        
+        return null;
     }
     
     public function getStats()
