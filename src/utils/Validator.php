@@ -145,6 +145,66 @@ class Validator
                     $this->addError($field, 'in');
                 }
                 break;
+
+            case 'not_in':
+                $disallowed = explode(',', $ruleValue);
+                if ($value && in_array($value, $disallowed)) {
+                    $this->addError($field, 'not_in');
+                }
+                break;
+
+            case 'date':
+                if ($value) {
+                    $d = \DateTime::createFromFormat('Y-m-d', $value);
+                    if (!$d || $d->format('Y-m-d') !== $value) {
+                        $this->addError($field, 'date');
+                    }
+                }
+                break;
+
+            case 'before':
+                if ($value && strtotime($value) >= strtotime($ruleValue)) {
+                    $this->addError($field, 'before', ['date' => $ruleValue]);
+                }
+                break;
+
+            case 'after':
+                if ($value && strtotime($value) <= strtotime($ruleValue)) {
+                    $this->addError($field, 'after', ['date' => $ruleValue]);
+                }
+                break;
+
+            case 'confirmed':
+                $otherValue = $this->data["{$field}_confirmation"] ?? null;
+                if ($value !== $otherValue) {
+                    $this->addError($field, 'confirmed');
+                }
+                break;
+
+            case 'between':
+                [$min, $max] = explode(',', $ruleValue);
+                $len = strlen((string) $value);
+                if ($len < (int) $min || $len > (int) $max) {
+                    $this->addError($field, 'between', ['min' => $min, 'max' => $max]);
+                }
+                break;
+
+            case 'nullable':
+                // Allow null/empty to pass all subsequent rules
+                if (empty($value) && $value !== '0') {
+                    // Remove any errors already added for this field and stop processing
+                    unset($this->errors[$field]);
+                }
+                break;
+
+            case 'json':
+                if ($value) {
+                    json_decode($value);
+                    if (json_last_error() !== JSON_ERROR_NONE) {
+                        $this->addError($field, 'json');
+                    }
+                }
+                break;
         }
     }
     
@@ -167,18 +227,25 @@ class Validator
         }
         
         $messages = [
-            'required' => "The {$field} field is required.",
-            'email' => "The {$field} must be a valid email address.",
-            'min' => "The {$field} must be at least {$params['min']} characters.",
-            'max' => "The {$field} may not be greater than {$params['max']} characters.",
-            'numeric' => "The {$field} must be a number.",
-            'integer' => "The {$field} must be an integer.",
-            'url' => "The {$field} must be a valid URL.",
-            'alpha' => "The {$field} may only contain letters.",
+            'required'   => "The {$field} field is required.",
+            'email'      => "The {$field} must be a valid email address.",
+            'min'        => "The {$field} must be at least {$params['min']} characters.",
+            'max'        => "The {$field} may not be greater than {$params['max']} characters.",
+            'numeric'    => "The {$field} must be a number.",
+            'integer'    => "The {$field} must be an integer.",
+            'url'        => "The {$field} must be a valid URL.",
+            'alpha'      => "The {$field} may only contain letters.",
             'alphanumeric' => "The {$field} may only contain letters and numbers.",
-            'regex' => "The {$field} format is invalid.",
-            'same' => "The {$field} and {$params['other']} must match.",
-            'in' => "The selected {$field} is invalid."
+            'regex'      => "The {$field} format is invalid.",
+            'same'       => "The {$field} and {$params['other']} must match.",
+            'in'         => "The selected {$field} is invalid.",
+            'not_in'     => "The selected {$field} is not allowed.",
+            'date'       => "The {$field} must be a valid date (YYYY-MM-DD).",
+            'before'     => "The {$field} must be a date before {$params['date']}.",
+            'after'      => "The {$field} must be a date after {$params['date']}.",
+            'confirmed'  => "The {$field} confirmation does not match.",
+            'between'    => "The {$field} must be between {$params['min']} and {$params['max']} characters.",
+            'json'       => "The {$field} must be valid JSON.",
         ];
         
         return $messages[$rule] ?? "The {$field} field is invalid.";
