@@ -252,6 +252,120 @@ class Collection implements ArrayAccess, Countable, Iterator
     }
 
     /**
+     * Sum all items (or a specific key).
+     *
+     * @param string|null $key
+     * @return int|float
+     */
+    public function sum(?string $key = null)
+    {
+        if ($key === null) {
+            return array_sum($this->items);
+        }
+
+        return array_sum(array_map(
+            static fn($item) => is_array($item) ? ($item[$key] ?? 0) : ($item->$key ?? 0),
+            $this->items
+        ));
+    }
+
+    /**
+     * Get the average of all items (or a specific key).
+     *
+     * @param string|null $key
+     * @return float|null
+     */
+    public function avg(?string $key = null): ?float
+    {
+        if ($this->isEmpty()) {
+            return null;
+        }
+
+        return $this->sum($key) / $this->count();
+    }
+
+    /**
+     * Get the minimum value.
+     *
+     * @param string|null $key
+     * @return mixed
+     */
+    public function min(?string $key = null)
+    {
+        $values = $key === null ? $this->items : $this->pluck($key)->toArray();
+        return $values ? min($values) : null;
+    }
+
+    /**
+     * Get the maximum value.
+     *
+     * @param string|null $key
+     * @return mixed
+     */
+    public function max(?string $key = null)
+    {
+        $values = $key === null ? $this->items : $this->pluck($key)->toArray();
+        return $values ? max($values) : null;
+    }
+
+    /**
+     * Group items by a key.
+     *
+     * @param string $key
+     * @return static
+     */
+    public function groupBy(string $key): self
+    {
+        $groups = [];
+
+        foreach ($this->items as $item) {
+            $groupKey = is_array($item) ? ($item[$key] ?? '') : ($item->$key ?? '');
+            $groups[$groupKey][] = $item;
+        }
+
+        return new static($groups);
+    }
+
+    /**
+     * Flatten a multi-dimensional collection one level deep.
+     *
+     * @return static
+     */
+    public function flatten(): self
+    {
+        $result = [];
+
+        array_walk_recursive($this->items, static function ($item) use (&$result) {
+            $result[] = $item;
+        });
+
+        return new static($result);
+    }
+
+    /**
+     * Merge another array or Collection into this one.
+     *
+     * @param array|self $items
+     * @return static
+     */
+    public function merge($items): self
+    {
+        $arr = $items instanceof self ? $items->toArray() : $items;
+        return new static(array_merge($this->items, $arr));
+    }
+
+    /**
+     * Check if a value exists in the collection.
+     *
+     * @param mixed $value
+     * @return bool
+     */
+    public function contains($value): bool
+    {
+        return in_array($value, $this->items, true);
+    }
+
+    /**
      * Get all items as a plain array.
      *
      * @return array
