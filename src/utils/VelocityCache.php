@@ -298,6 +298,70 @@ class VelocityCache
         }
     }
     
+    /**
+     * Get an item from cache or compute and store it.
+     *
+     * If the key does not exist (or has expired), the callback is invoked,
+     * its return value is stored for $ttl seconds, and then returned.
+     *
+     * @param string   $key      Cache key
+     * @param int      $ttl      Time-to-live in seconds (default 3600)
+     * @param callable $callback Value factory; called only on cache miss
+     * @return mixed
+     */
+    public function remember(string $key, int $ttl, callable $callback)
+    {
+        $cached = $this->get($key);
+
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $value = $callback();
+        $this->put($key, $value, $ttl);
+
+        return $value;
+    }
+
+    /**
+     * Get an item from cache or compute and store it forever (no expiry).
+     *
+     * @param string   $key
+     * @param callable $callback
+     * @return mixed
+     */
+    public function rememberForever(string $key, callable $callback)
+    {
+        return $this->remember($key, PHP_INT_MAX, $callback);
+    }
+
+    /**
+     * Increment a numeric cache value by the given amount.
+     *
+     * @param string $key
+     * @param int    $by
+     * @return int The new value, or 0 on failure
+     */
+    public function increment(string $key, int $by = 1): int
+    {
+        $current = (int) ($this->get($key) ?? 0);
+        $new     = $current + $by;
+        $this->put($key, $new, 86400);
+        return $new;
+    }
+
+    /**
+     * Decrement a numeric cache value by the given amount.
+     *
+     * @param string $key
+     * @param int    $by
+     * @return int The new value
+     */
+    public function decrement(string $key, int $by = 1): int
+    {
+        return $this->increment($key, -$by);
+    }
+
     public function isEnabled()
     {
         return $this->enabled;
