@@ -152,4 +152,46 @@ class EventDispatcher
 
         return (bool) preg_match($regex, $event);
     }
+
+    /**
+     * Get all registered event names.
+     *
+     * @return string[]
+     */
+    public static function getRegisteredEvents(): array
+    {
+        return array_keys(self::$listeners);
+    }
+
+    /**
+     * Dispatch an event and halt if any listener returns false.
+     *
+     * @param string $event
+     * @param mixed  $payload
+     * @return bool True if all listeners passed, false if one returned false
+     */
+    public static function until(string $event, $payload = null): bool
+    {
+        foreach (self::$listeners[$event] ?? [] as $listener) {
+            if ($listener($payload, $event) === false) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Subscribe a class-based event subscriber.
+     * The subscriber class must implement a subscribe(EventDispatcher $dispatcher) method.
+     *
+     * @param object $subscriber
+     * @return void
+     */
+    public static function subscribe(object $subscriber): void
+    {
+        if (method_exists($subscriber, 'subscribe')) {
+            $subscriber->subscribe();
+        }
+    }
 }
