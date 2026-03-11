@@ -22,6 +22,7 @@
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Shared Hosting / cPanel Deploy](#shared-hosting--cpanel-deploy)
 - [Quick Start](#quick-start)
 - [Directory Structure](#directory-structure)
 - [Routing](#routing)
@@ -87,7 +88,10 @@ VelocityPHP is a lightweight, high-performance PHP framework designed for develo
 ```bash
 git clone https://github.com/prasangapokharel/VelocityPHP.git
 cd VelocityPHP
-cp .env.example .env
+cp .env.velocity.example .env.velocity
+# Edit .env.velocity with your credentials, then:
+php migrate.php
+php start.php
 ```
 
 ### Via Composer
@@ -95,22 +99,116 @@ cp .env.example .env
 ```bash
 composer create-project velocityphp/framework my-app
 cd my-app
-cp .env.example .env
+cp .env.velocity.example .env.velocity
 ```
+
+---
+
+## Shared Hosting / cPanel Deploy
+
+No SSH, no Composer, no terminal — just a zip file upload. Here are the exact steps:
+
+### Step 1 — Download the zip
+
+Download the repository as a zip from GitHub (`Code → Download ZIP`), or produce one locally:
+
+```bash
+git archive --format=zip HEAD -o velocityphp.zip
+```
+
+### Step 2 — Upload and extract
+
+- In cPanel **File Manager**, navigate to `public_html` (or a subdomain folder).
+- Upload `velocityphp.zip` and use **Extract** to unzip it there.
+- You should now have `public_html/VelocityPHP/` (or similar). Move the contents up one level so the structure is:
+
+```
+public_html/
+├── public/          ← this is what the browser should hit
+├── src/
+├── database/
+├── .env.velocity    ← you will create this in Step 3
+├── .htaccess
+└── ...
+```
+
+> **cPanel document root tip:** If you can set the domain's document root directly to `public_html/public/`, do that — it is the most secure option and the root `.htaccess` is not needed at all.
+> If you cannot change the document root, keep everything in `public_html/` and the root `.htaccess` will redirect traffic into `/public/` automatically.
+
+### Step 3 — Create your `.env.velocity`
+
+Copy `.env.velocity.example` to `.env.velocity` in the same folder and fill in your values:
+
+```env
+APP_NAME="My App"
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://yourdomain.com
+
+DB_CONNECTION=mysql
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=cpanelusername_dbname
+DB_USER=cpanelusername_dbuser
+DB_PASS=your_db_password
+
+CACHE_ENABLED=true
+CACHE_LOCATION=src/velocache/velocity.db
+
+SESSION_LIFETIME=120
+SESSION_SECURE=true
+SESSION_HTTPONLY=true
+```
+
+**That is the only file you need to change.** Everything else in the framework reads from `.env.velocity`.
+
+### Step 4 — Set folder permissions
+
+These directories must be writable by the web server (`755` or `775`):
+
+```
+logs/
+storage/
+storage/cache/
+src/velocache/
+public/uploads/
+```
+
+In cPanel File Manager, right-click each folder → **Change Permissions** → tick all three *Write* boxes (or set `755`).
+
+### Step 5 — Run migrations
+
+Open your browser and visit:
+
+```
+https://yourdomain.com/migrate-run
+```
+
+Or, if your host provides a **Terminal** / **PHP Script Runner** in cPanel:
+
+```bash
+php migrate.php
+```
+
+This creates the `users` and `remember_tokens` tables in your database.
+
+### Step 6 — Done
+
+Visit `https://yourdomain.com` — the framework should boot. If you see a blank page, check `logs/error.log` (temporarily set `APP_DEBUG=true` in `.env.velocity` to see errors in the browser, then set it back to `false`).
 
 ---
 
 ## Quick Start
 
 ```bash
-# Start the built-in PHP development server
+# Start the built-in PHP development server (port 8001, doc-root = public/)
 php start.php
 
-# Or use the Composer script
-composer serve
+# Alternative dev server with auto-reload
+php dev.php
 ```
 
-Open your browser at `http://localhost:8000`.
+Open your browser at `http://localhost:8001`.
 
 ---
 
@@ -174,10 +272,10 @@ VelocityPHP/
 ├── database/                # SQL schema files
 ├── storage/                 # Uploaded files, temp storage
 ├── logs/                    # Application logs
-├── velocache/               # Cache store
-├── .env.example             # Environment config template
+├── src/velocache/           # SQLite cache store (must be writable)
+├── .env.velocity.example    # Environment config template — copy to .env.velocity
 ├── composer.json
-└── start.php                # Dev server launcher
+└── start.php                # Dev server launcher (port 8001)
 ```
 
 ---
@@ -352,18 +450,32 @@ Copy `.env.velocity.example` to `.env.velocity` and update your settings:
 APP_NAME=VelocityPHP
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=http://localhost:8000
+APP_URL=https://yourdomain.com
 
 DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
+DB_HOST=localhost
 DB_PORT=3306
-DB_DATABASE=velocityphp
-DB_USERNAME=root
-DB_PASSWORD=
+DB_NAME=your_database_name
+DB_USER=your_database_user
+DB_PASS=your_database_password
 
-CACHE_DRIVER=sqlite
+CACHE_ENABLED=true
+CACHE_LOCATION=src/velocache/velocity.db
+
 SESSION_LIFETIME=120
+SESSION_SECURE=true
+SESSION_HTTPONLY=true
 ```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `APP_ENV` | `development` | `production` disables debug output and enables HSTS |
+| `APP_DEBUG` | `false` | Set `true` locally to show errors in browser |
+| `APP_URL` | `http://localhost` | Your full domain — used for asset URLs and redirects |
+| `APP_KEY` | _(empty)_ | Generate: `php -r "echo bin2hex(random_bytes(32));"` |
+| `DB_CONNECTION` | `mysql` | `mysql`, `pgsql`, or `sqlite` |
+| `CACHE_ENABLED` | `true` | Disable to turn off SQLite page cache |
+| `SESSION_SECURE` | `false` | Set `true` when running on HTTPS |
 
 ---
 
