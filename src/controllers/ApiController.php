@@ -104,6 +104,10 @@ class ApiController extends BaseController
                 return $this->jsonError('User not found', [], 404);
             }
             
+            if (isset($user['password'])) {
+                unset($user['password']);
+            }
+            
             return $this->jsonSuccess('User retrieved successfully', $user);
         } catch (\Exception $e) {
             return $this->jsonError('Failed to retrieve user: ' . $e->getMessage(), [], 500);
@@ -126,13 +130,19 @@ class ApiController extends BaseController
             return $this->jsonError('Validation failed', $validation, 422);
         }
         
-        // Sanitize input
+        // Sanitize non-password fields only.
+        // Never pass bcrypt hashes through sanitize(): strip_tags() could corrupt them.
         $data = $this->sanitize([
             'name' => $this->post('name'),
             'email' => $this->post('email'),
             'role' => $this->post('role'),
             'status' => 'active'
         ]);
+
+        // Generate a secure random password and hash it AFTER sanitize() so the hash
+        // is never passed through strip_tags().
+        $randomPassword = bin2hex(random_bytes(16)); // 32 hex chars
+        $data['password'] = password_hash($randomPassword, PASSWORD_DEFAULT);
         
         try {
             // Check if email already exists

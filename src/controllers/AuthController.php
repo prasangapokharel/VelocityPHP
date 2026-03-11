@@ -17,7 +17,7 @@ class AuthController extends BaseController
     /**
      * Show login page
      */
-    public function showLogin()
+    public function showLogin($params = [], $isAjax = false)
     {
         // Redirect if already logged in
         if (Auth::check()) {
@@ -75,7 +75,7 @@ class AuthController extends BaseController
     /**
      * Show register page
      */
-    public function showRegister()
+    public function showRegister($params = [], $isAjax = false)
     {
         if (Auth::check()) {
             Response::redirect('/dashboard');
@@ -84,6 +84,18 @@ class AuthController extends BaseController
         return $this->view('register/index', [], 'Register');
     }
     
+    /**
+     * Show forgot-password page (stub — feature not yet implemented)
+     */
+    public function showForgotPassword($params = [], $isAjax = false)
+    {
+        if (Auth::check()) {
+            Response::redirect('/dashboard');
+        }
+
+        return $this->view('forgot-password/index', [], 'Forgot Password');
+    }
+
     /**
      * Handle registration
      */
@@ -95,8 +107,8 @@ class AuthController extends BaseController
         $errors = $this->validate($data, [
             'name' => 'required|min:3',
             'email' => 'required|email',
-            'password' => 'required|min:8',
-            'password_confirmation' => 'required|confirmed'
+            'password' => 'required|min:8|confirmed',
+            'password_confirmation' => 'required'
         ]);
         
         if ($errors !== true) {

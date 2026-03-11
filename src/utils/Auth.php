@@ -260,9 +260,17 @@ class Auth
         // Clear session data
         $_SESSION = [];
         
-        // Destroy the session file on disk, then start a fresh one.
+        // Destroy the session file on disk, then start a fresh one with the
+        // same secure options that were used in index.php.
         session_destroy();
-        session_start();
+        session_start([
+            'cookie_httponly'     => true,
+            'cookie_samesite'     => 'Lax',
+            'use_strict_mode'     => true,
+            'use_only_cookies'    => true,
+            'sid_length'          => 48,
+            'sid_bits_per_character' => 6,
+        ]);
         session_regenerate_id(true);
         
         self::$user = null;

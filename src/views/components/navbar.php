@@ -44,7 +44,11 @@
         const currentPath = window.location.pathname;
         document.querySelectorAll('.nav-link').forEach(link => {
             const linkPath = link.getAttribute('href');
-            if (linkPath === currentPath || (linkPath !== '/' && currentPath.startsWith(linkPath))) {
+            // Match exactly, or as a path prefix (must end at a '/' boundary to
+            // avoid '/crypto' matching '/cryptography').
+            const isPrefix = linkPath !== '/' && currentPath.startsWith(linkPath) &&
+                             (currentPath.length === linkPath.length || currentPath[linkPath.length] === '/');
+            if (linkPath === currentPath || isPrefix) {
                 link.classList.add('active');
             } else {
                 link.classList.remove('active');

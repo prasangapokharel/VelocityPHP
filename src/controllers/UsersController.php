@@ -132,6 +132,8 @@ class UsersController extends BaseController
                 unset($user['password']);
             }
             
+            $this->invalidateCache('users');
+            
             return $this->jsonSuccess('User created successfully', $user);
             
         } catch (\Exception $e) {
@@ -190,6 +192,9 @@ class UsersController extends BaseController
                 unset($updatedUser['password']);
             }
             
+            $this->invalidateCache('users');
+            $this->invalidateCache('users', $userId);
+            
             return $this->jsonSuccess('User updated successfully', $updatedUser);
             
         } catch (\Exception $e) {
@@ -218,6 +223,9 @@ class UsersController extends BaseController
             // Delete user
             $this->userModel->delete($userId);
             
+            $this->invalidateCache('users');
+            $this->invalidateCache('users', $userId);
+            
             return $this->jsonSuccess('User deleted successfully');
             
         } catch (\Exception $e) {
@@ -232,6 +240,14 @@ class UsersController extends BaseController
     {
         try {
             $users = $this->userModel->all();
+            
+            $users = array_map(function($user) {
+                if (isset($user['password'])) {
+                    unset($user['password']);
+                }
+                return $user;
+            }, $users);
+            
             return $this->jsonSuccess('Users retrieved successfully', $users);
         } catch (\Exception $e) {
             return $this->jsonError('Failed to retrieve users: ' . $e->getMessage(), [], 500);

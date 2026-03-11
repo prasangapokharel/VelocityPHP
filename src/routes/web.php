@@ -20,6 +20,7 @@ RouteCollection::get('/register', 'AuthController@showRegister')->name('register
 RouteCollection::post('/register', 'AuthController@register');
 RouteCollection::get('/logout', 'AuthController@logout')->name('logout');
 RouteCollection::post('/logout', 'AuthController@logout');
+RouteCollection::get('/forgot-password', 'AuthController@showForgotPassword')->name('forgot-password');
 
 // Dashboard (auth-protected)
 RouteCollection::get('/dashboard', 'DashboardController@index')->name('dashboard');

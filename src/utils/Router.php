@@ -16,6 +16,36 @@ class Router
     private static $routeCache = [];
     private static $cacheEnabled = true;
     private static $matchCount = 0;
+
+    /**
+     * URI prefixes that must never be stored in the page cache.
+     * These are auth-gated or user-specific pages; caching them would
+     * serve stale, potentially unauthorised content to other visitors.
+     */
+    private static $noCacheUris = [
+        '/dashboard',
+        '/users',
+        '/logout',
+        '/login',
+        '/register',
+        '/forgot-password',
+        '/profile',
+        '/account',
+        '/settings',
+    ];
+
+    /**
+     * Return true when the given URI should NOT be written to the page cache.
+     */
+    private function isCacheableUri(string $uri): bool
+    {
+        foreach (self::$noCacheUris as $prefix) {
+            if ($uri === $prefix || strpos($uri, $prefix . '/') === 0) {
+                return false;
+            }
+        }
+        return true;
+    }
     
     /**
      * Dispatch the request to appropriate controller/view
@@ -137,7 +167,7 @@ class Router
             }
             
             // Cache the response
-            if ($cacheKey && $method === 'GET' && $response !== null) {
+            if ($cacheKey && $method === 'GET' && $response !== null && $this->isCacheableUri($uri)) {
                 $cacheResponse = $response;
                 if (is_string($response) && !$isAjax) {
                     $cacheResponse = ['html' => $response, 'title' => $this->extractTitle($response)];
@@ -181,7 +211,7 @@ class Router
                 $cacheResponse = $response;
             }
             
-            if ($cacheKey && $method === 'GET' && $cacheResponse !== null) {
+            if ($cacheKey && $method === 'GET' && $cacheResponse !== null && $this->isCacheableUri($uri)) {
                 $cache->put($cacheKey, $cacheResponse, 3600);
             }
             
@@ -304,8 +334,9 @@ class Router
         $uri = trim($uri, '/');
         
         // Basic sanitization (faster than filter_var)
-        // Allow alphanumeric, slashes, hyphens, underscores for routes
-        $uri = preg_replace('/[^a-zA-Z0-9\/_-]/', '', $uri);
+        // Allow alphanumeric, slashes, hyphens, underscores, and dots for routes.
+        // Dots are needed for version strings (e.g. /api/v1.0) and file extensions.
+        $uri = preg_replace('/[^a-zA-Z0-9\/_\-.]/', '', $uri);
         
         // Return cleaned URI with preserved leading slash
         if ($uri === '') {
@@ -688,7 +719,8 @@ class Router
             }
         }
         
-        if ($cacheKey && $method === 'GET' && $cacheResponse !== null) {
+        $uri = $this->cleanUri($_SERVER['REQUEST_URI'] ?? '/');
+        if ($cacheKey && $method === 'GET' && $cacheResponse !== null && $this->isCacheableUri($uri)) {
             $cache->put($cacheKey, $cacheResponse, 3600);
         }
         

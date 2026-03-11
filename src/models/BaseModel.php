@@ -223,19 +223,14 @@ abstract class BaseModel
      */
     public function find($id)
     {
-        static $stmtCache = [];
-        $cacheKey = $this->table . '_find';
-        
         $connection = self::getConnection();
         
         try {
-            // Use cached prepared statement for better performance
-            if (!isset($stmtCache[$cacheKey])) {
-                $sql = "SELECT * FROM {$this->table} WHERE {$this->primaryKey} = ? LIMIT 1";
-                $stmtCache[$cacheKey] = $connection->prepare($sql);
-            }
-            
-            $stmt = $stmtCache[$cacheKey];
+            // Prepare the statement fresh on each connection — PDOStatement objects
+            // are bound to the connection they were prepared on, so caching them
+            // across pool connections would cause "invalid object" errors.
+            $sql = "SELECT * FROM {$this->table} WHERE {$this->primaryKey} = ? LIMIT 1";
+            $stmt = $connection->prepare($sql);
             $stmt->execute([$id]);
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
             self::$queryCount++;

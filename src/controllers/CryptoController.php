@@ -24,12 +24,8 @@ class CryptoController extends BaseController
         $service = new CryptoService();
         $prices = $service->getPrices($ids, $vs_currency);
 
-        if ($isAjax) {
-            // Return a rendered partial for AJAX
-            return $this->view('crypto/index', ['prices' => $prices], 'Crypto Prices');
-        }
-
-        // For full page requests, router will render layout; return null
-        return null;
+        // Always render the view with data so $prices is always available,
+        // whether the request is AJAX (partial) or a full page load.
+        return $this->view('crypto/index', ['prices' => $prices], 'Crypto Prices');
     }
 }
