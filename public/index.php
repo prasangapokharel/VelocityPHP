@@ -195,17 +195,22 @@ if ($isAjax) {
 // CSRF Protection
 // ============================================================================
 
-if ($requestMethod === 'POST' || $requestMethod === 'PUT' || $requestMethod === 'DELETE') {
-    if ($isAjax) {
-        $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_POST['csrf_token'] ?? '';
-        if (!hash_equals($_SESSION['csrf_token'] ?? '', $csrfToken)) {
-            if ($isAjax) {
-                http_response_code(403);
-                echo json_encode(['error' => 'CSRF token validation failed']);
-                exit;
-            }
-            die('CSRF token validation failed');
+if (in_array($requestMethod, ['POST', 'PUT', 'PATCH', 'DELETE'])) {
+    // Validate CSRF for ALL state-changing requests (AJAX and regular forms)
+    $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] 
+              ?? $_POST['_token'] 
+              ?? $_POST['csrf_token'] 
+              ?? '';
+    
+    if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrfToken)) {
+        if ($isAjax) {
+            http_response_code(403);
+            header('Content-Type: application/json; charset=UTF-8');
+            echo json_encode(['error' => 'CSRF token validation failed', 'code' => 403]);
+            exit;
         }
+        http_response_code(403);
+        die('403 Forbidden: CSRF token validation failed.');
     }
 }
 
@@ -219,22 +224,15 @@ if (!isset($_SESSION['csrf_token'])) {
 // ============================================================================
 
 try {
-    // Set performance headers
+    // Set cache control headers
     if (!headers_sent()) {
-        // Cache control headers for static assets
         if ($requestMethod === 'GET' && strpos($requestUri, '/assets/') === 0) {
             header('Cache-Control: public, max-age=31536000, immutable');
             header('Expires: ' . gmdate('D, d M Y H:i:s', time() + 31536000) . ' GMT');
         } else {
-            // Cache control for dynamic content
             header('Cache-Control: private, no-cache, must-revalidate');
             header('Pragma: no-cache');
         }
-        
-        // Performance headers
-        header('X-Content-Type-Options: nosniff');
-        header('X-Frame-Options: SAMEORIGIN');
-        header('X-XSS-Protection: 1; mode=block');
     }
     
     // Route the request

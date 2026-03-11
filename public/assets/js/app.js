@@ -58,32 +58,23 @@
 
             // Global AJAX error handler
             $(document).ajaxError(function(event, jqxhr, settings, thrownError) {
-                // Completely ignore prefetch requests with query strings (?_=timestamp)
+                // Silently ignore background prefetch requests (jQuery cache-busting)
                 if (settings.url.includes('?_=') && settings.type === 'GET') {
-                    return; // Silent ignore - no errors shown
-                }
-                
-                // Skip error handling for routes that don't exist
-                if (settings.url.includes('/profile') || settings.url.includes('/404')) {
                     return;
                 }
-                
+
                 // Only handle actual user-triggered errors
                 if (jqxhr.status === 403) {
                     NativeApp.showError('Access denied. Please login again.');
                 } else if (jqxhr.status === 404) {
-                    // Only load 404 page for actual 404s, not prefetch errors
                     if (!settings.url.includes('?_=')) {
                         NativeApp.loadRoute('/404', false);
                     }
                 } else if (jqxhr.status === 500) {
-                    // Only show error for POST/PUT/DELETE or GET without query string
                     if (settings.type !== 'GET' || !settings.url.includes('?_=')) {
                         NativeApp.showError('Server error. Please try again.');
                     }
                 }
-                
-                // NO console logging - completely silent for production
             });
         },
 
@@ -406,14 +397,18 @@
 
         /**
          * Execute inline scripts from AJAX response
+         * Uses DOM-based execution instead of eval() to avoid XSS risk
          */
         executeScripts: function(scripts) {
             if (Array.isArray(scripts)) {
-                scripts.forEach(function(script) {
+                scripts.forEach(function(scriptContent) {
                     try {
-                        eval(script);
+                        var script = document.createElement('script');
+                        script.textContent = scriptContent;
+                        document.head.appendChild(script);
+                        document.head.removeChild(script);
                     } catch (e) {
-                        // Silent error handling - no console logs
+                        // Silent error handling - no console logs in production
                     }
                 });
             }
@@ -458,16 +453,6 @@
             return link.hostname !== window.location.hostname ||
                    url.startsWith('http://') ||
                    url.startsWith('https://');
-        },
-
-        /**
-         * Clear all navigation cache
-         */
-        clearCache: function() {
-            this.cache = {};
-            if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
-                console.log('🧹 Navigation cache cleared');
-            }
         },
 
         /**
@@ -536,15 +521,15 @@
         },
 
         /**
-         * Preload critical assets
+         * Preload critical assets for commonly visited routes
+         * Only preloads routes that are registered in the application
          */
         preloadCriticalAssets: function() {
-            // Preload commonly used routes
-            const criticalRoutes = ['/dashboard', '/profile'];
-            
+            // Define routes to preload — update this list to match your actual routes
+            var criticalRoutes = window.PRELOAD_ROUTES || [];
+
             criticalRoutes.forEach(function(route) {
                 if (route !== window.location.pathname) {
-                    // Silently preload in background
                     $.ajax({
                         url: route,
                         method: 'GET',
@@ -552,18 +537,19 @@
                         success: function(response) {
                             NativeApp.cache[route] = response;
                         }
+                        // No error handler — silent background prefetch
                     });
                 }
             });
         },
 
         /**
-         * Clear view cache
+         * Clear all navigation cache
          */
         clearCache: function() {
             this.cache = {};
             if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
-                console.log('View cache cleared');
+                console.log('Navigation cache cleared');
             }
         },
 

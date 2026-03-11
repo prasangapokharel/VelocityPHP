@@ -56,6 +56,59 @@ class RouteCollection
         return self::addRoute($methods, $uri, $action);
     }
     
+    /**
+     * Register a full set of RESTful resource routes for a controller.
+     *
+     * Registers:
+     *   GET    /{resource}           => index
+     *   GET    /{resource}/{id}      => show
+     *   POST   /{resource}           => store
+     *   PUT    /{resource}/{id}      => update
+     *   DELETE /{resource}/{id}      => destroy
+     *
+     * @param string $resource  Plural resource name, e.g. "posts"
+     * @param string $controller Controller class name, e.g. "PostController"
+     * @param array  $only       Limit to these methods: ['index','show','store','update','destroy']
+     * @param array  $except     Exclude these methods
+     */
+    public static function resource($resource, $controller, array $only = [], array $except = [])
+    {
+        $resource = trim($resource, '/');
+        
+        $resourceRoutes = [
+            'index'   => ['GET',    "/{$resource}",       "{$controller}@index"],
+            'store'   => ['POST',   "/{$resource}",       "{$controller}@store"],
+            'show'    => ['GET',    "/{$resource}/{id}",  "{$controller}@show"],
+            'update'  => ['PUT',    "/{$resource}/{id}",  "{$controller}@update"],
+            'destroy' => ['DELETE', "/{$resource}/{id}",  "{$controller}@destroy"],
+        ];
+        
+        foreach ($resourceRoutes as $name => $definition) {
+            if (!empty($only) && !in_array($name, $only)) continue;
+            if (!empty($except) && in_array($name, $except)) continue;
+            
+            self::addRoute($definition[0], $definition[1], $definition[2])
+                ->name("{$resource}.{$name}");
+        }
+    }
+    
+    /**
+     * Create a route group with an /api/vX prefix.
+     *
+     * Usage:
+     *   RouteCollection::apiPrefix('v1', function() {
+     *       RouteCollection::get('/users', 'UserController@index');
+     *   });
+     *   // Registers: GET /api/v1/users
+     *
+     * @param string   $version  Version string, e.g. "v1"
+     * @param callable $callback Routes to register within this group
+     */
+    public static function apiPrefix($version, callable $callback)
+    {
+        self::group(['prefix' => "/api/{$version}"], $callback);
+    }
+    
     private static function addRoute($methods, $uri, $action)
     {
         // Apply current group prefix and middleware
