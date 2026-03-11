@@ -63,8 +63,8 @@ $(document).ready(function() {
                           .text(response.message);
                     
                     setTimeout(() => {
-                        window.location.href = response.data.redirect;
-                    }, 1000);
+                        NativeApp.navigate(response.data.redirect, true);
+                    }, 500);
                 }
             },
             error: function(xhr) {

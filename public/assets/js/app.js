@@ -2,653 +2,436 @@
  * Core AJAX Router & SPA Handler
  * Provides zero-refresh navigation with browser history API
  * Handles all dynamic content loading and state management
- * 
+ *
  * @package VelocityPHP
- * @version 1.0.0
+ * @version 1.1.0
  */
 
-(function($) {
+(function ($) {
     'use strict';
 
-    // SPA Core Application
     window.NativeApp = {
         config: {
             contentSelector: '#app-content',
             loadingClass: 'loading',
-            transitionDuration: 300,
-            cacheViews: false, // Disabled for now to prevent wrong content caching
-            enableHistory: true
+            // 150ms fade is barely perceptible but still smooth — keeps it snappy
+            transitionDuration: 150,
+            cacheViews: true,
+            enableHistory: true,
+            // Abort any in-flight navigation after this many ms
+            requestTimeout: 15000
         },
 
         cache: {},
         currentRoute: null,
-        isLoading: false,
 
-        /**
-         * Initialize the application
-         */
-        init: function() {
+        // Active XHR so we can abort it on rapid navigation
+        _activeXhr: null,
+
+        // Loading-bar completion timer
+        _loadingTimer: null,
+
+        init: function () {
             this.setupAjaxDefaults();
+            this.setupCSRFToken();
             this.bindNavigationEvents();
             this.bindFormEvents();
             this.setupHistoryAPI();
-            this.setupCSRFToken();
-            this.preloadCriticalAssets();
-            
-            // Mark initial route
+
             this.currentRoute = window.location.pathname;
-            
-            // Silent initialization - no console logs in production
+
             if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
-                console.log('🚀 NativeApp initialized - Zero-refresh mode active');
+                console.log('🚀 NativeApp initialized — zero-refresh SPA active');
             }
         },
 
-        /**
-         * Configure jQuery AJAX defaults
-         */
-        setupAjaxDefaults: function() {
+        // ── AJAX defaults ────────────────────────────────────────────────────────
+
+        setupAjaxDefaults: function () {
             $.ajaxSetup({
                 cache: false,
-                timeout: 30000,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            });
-
-            // Global AJAX error handler
-            $(document).ajaxError(function(event, jqxhr, settings, thrownError) {
-                // Silently ignore background prefetch requests (jQuery cache-busting)
-                if (settings.url.includes('?_=') && settings.type === 'GET') {
-                    return;
-                }
-
-                // Only handle actual user-triggered errors
-                if (jqxhr.status === 403) {
-                    NativeApp.showError('Access denied. Please login again.');
-                } else if (jqxhr.status === 404) {
-                    if (!settings.url.includes('?_=')) {
-                        NativeApp.loadRoute('/404', false);
-                    }
-                } else if (jqxhr.status === 500) {
-                    if (settings.type !== 'GET' || !settings.url.includes('?_=')) {
-                        NativeApp.showError('Server error. Please try again.');
-                    }
-                }
+                timeout: this.config.requestTimeout,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
         },
 
-        /**
-         * Setup CSRF token for all AJAX requests
-         * Merges with existing headers set in setupAjaxDefaults (preserves X-Requested-With)
-         */
-        setupCSRFToken: function() {
+        setupCSRFToken: function () {
             const token = $('meta[name="csrf-token"]').attr('content');
             if (token) {
-                const current = $.ajaxSettings.headers || {};
                 $.ajaxSetup({
-                    headers: $.extend({}, current, {
+                    headers: $.extend({}, $.ajaxSettings.headers || {}, {
+                        'X-Requested-With': 'XMLHttpRequest',
                         'X-CSRF-TOKEN': token
                     })
                 });
             }
         },
 
-        /**
-         * Bind click events to all internal links for AJAX navigation
-         */
-        bindNavigationEvents: function() {
+        // ── Navigation ───────────────────────────────────────────────────────────
+
+        bindNavigationEvents: function () {
             const self = this;
 
-            // Delegate click events for dynamic links
-            $(document).on('click', 'a[href]:not([target="_blank"]):not([data-no-ajax])', function(e) {
-                const $link = $(this);
-                const href = $link.attr('href');
-
-                // Skip external links, anchors, and javascript: links
-                if (self.isExternalLink(href) || href.startsWith('#') || href.startsWith('javascript:')) {
-                    return;
-                }
+            $(document).on('click', 'a[href]:not([target="_blank"]):not([data-no-ajax])', function (e) {
+                const href = $(this).attr('href');
+                if (!href) return;
+                if (
+                    self.isExternalLink(href) ||
+                    href.startsWith('#') ||
+                    href.startsWith('javascript:') ||
+                    href.startsWith('mailto:') ||
+                    href.startsWith('tel:')
+                ) return;
 
                 e.preventDefault();
                 self.navigate(href, true);
             });
 
-            // Handle back/forward browser buttons
             if (this.config.enableHistory) {
-                window.addEventListener('popstate', function(e) {
-                    if (e.state && e.state.route) {
-                        self.loadRoute(e.state.route, false);
-                    } else {
-                        self.loadRoute(window.location.pathname, false);
-                    }
+                window.addEventListener('popstate', function (e) {
+                    const route = (e.state && e.state.route) ? e.state.route : window.location.pathname;
+                    self.loadRoute(route, false);
                 });
             }
         },
 
-        /**
-         * Bind AJAX form submissions
-         */
-        bindFormEvents: function() {
-            const self = this;
-            const submittingForms = new WeakSet();
-
-            $(document).on('submit', 'form[data-ajax]', function(e) {
-                e.preventDefault();
-                
-                if (submittingForms.has(this)) {
-                    return;
-                }
-                
-                submittingForms.add(this);
-                
-                const $form = $(this);
-                const method = $form.attr('method') || 'POST';
-                const action = $form.attr('action') || window.location.pathname;
-                const formData = new FormData(this);
-
-                self.submitForm(action, method, formData, $form).always(function() {
-                    submittingForms.delete($form[0]);
-                });
-            });
-        },
-
-        /**
-         * Setup HTML5 History API
-         */
-        setupHistoryAPI: function() {
+        setupHistoryAPI: function () {
             if (this.config.enableHistory && window.history && window.history.pushState) {
-                // Replace current state with initial route
-                history.replaceState(
-                    { route: window.location.pathname },
-                    document.title,
-                    window.location.pathname
-                );
+                history.replaceState({ route: window.location.pathname }, document.title, window.location.pathname);
             }
         },
 
-        /**
-         * Navigate to a new route
-         */
-        navigate: function(url, updateHistory) {
-            // Prevent duplicate navigation
-            if (url === this.currentRoute && !url.includes('?')) {
-                return;
+        navigate: function (url, updateHistory) {
+            // Normalise to pathname only (strip same-origin host if present)
+            try {
+                const parsed = new URL(url, window.location.origin);
+                if (parsed.hostname === window.location.hostname) {
+                    url = parsed.pathname + parsed.search + parsed.hash;
+                }
+            } catch (e) { /* keep url as-is */ }
+
+            // Strip jQuery cache-buster
+            url = url.replace(/[?&]_=\d+/, '');
+
+            if (url === this.currentRoute) return;
+
+            // Abort any in-flight request for a different route
+            if (this._activeXhr) {
+                this._activeXhr.abort();
+                this._activeXhr = null;
             }
 
-            // Clear cache for this specific route to ensure fresh content
+            // Invalidate cache for this URL so it gets a fresh copy
             delete this.cache[url];
-            
+
             this.loadRoute(url, updateHistory);
         },
 
-        /**
-         * Load route via AJAX
-         */
-        loadRoute: function(url, updateHistory) {
+        loadRoute: function (url, updateHistory) {
             const self = this;
 
-            // Prevent concurrent requests
-            if (this.isLoading) {
-                return;
-            }
-
-            // Check cache first
+            // Serve from cache instantly (no fade, no loading bar)
             if (this.config.cacheViews && this.cache[url]) {
-                this.renderContent(this.cache[url], url, updateHistory);
+                this._swapContent(this.cache[url], url, updateHistory);
                 return;
             }
 
-            this.isLoading = true;
             this.showLoading();
 
-            $.ajax({
+            this._activeXhr = $.ajax({
                 url: url,
                 method: 'GET',
                 dataType: 'json',
-                success: function(response) {
-                    // Cache the response
-                    if (self.config.cacheViews) {
+                timeout: this.config.requestTimeout,
+                success: function (response) {
+                    // Cache all GET responses except auth/user-specific pages
+                    if (self.config.cacheViews && !self._isPrivateRoute(url)) {
                         self.cache[url] = response;
                     }
+                    self._swapContent(response, url, updateHistory);
+                },
+                error: function (jqxhr, status) {
+                    if (status === 'abort') return; // We aborted — ignore
 
-                    self.renderContent(response, url, updateHistory);
-                },
-                error: function(jqxhr, status, error) {
                     self.hideLoading();
-                    
-                    // Try to parse response if available
+
                     let response = null;
-                    try {
-                        if (jqxhr.responseText) {
-                            response = JSON.parse(jqxhr.responseText);
-                        }
-                    } catch(e) {
-                        // Not JSON - ignore
+                    try { response = JSON.parse(jqxhr.responseText); } catch (e) {}
+
+                    if (jqxhr.status === 302 || jqxhr.status === 301) {
+                        // Follow redirects returned as JSON
+                        const loc = jqxhr.getResponseHeader('Location');
+                        if (loc) { self.navigate(loc, true); return; }
                     }
-                    
+
+                    if (jqxhr.status === 401 || jqxhr.status === 403) {
+                        self.navigate('/login', true);
+                        return;
+                    }
+
                     if (jqxhr.status === 404) {
-                        // Use the clean 404 page from server response
-                        if (response && response.html) {
-                            self.renderContent(response, url, updateHistory);
-                        } else {
-                            // Fallback clean 404
-                            self.renderContent({
-                                html: '<div class="container text-center py-2xl"><h1 class="text-4xl font-bold mb-md">404</h1><p class="text-lg mb-xl text-neutral-600">Page not found</p><a href="/" class="btn btn-primary btn-md">Go Home</a></div>',
-                                title: '404 - Page Not Found'
-                            }, url, updateHistory);
-                        }
-                    } else {
-                        // Show simple error message
-                        self.showError('Something went wrong. Please try again.');
+                        const html = (response && response.html)
+                            ? response.html
+                            : '<div class="container text-center py-2xl"><h1 class="text-4xl font-bold mb-md">404</h1><p class="text-lg mb-xl text-neutral-600">Page not found</p><a href="/" class="btn btn-primary btn-md">Go Home</a></div>';
+                        self._swapContent({ html: html, title: '404 – Page Not Found' }, url, updateHistory);
+                        return;
                     }
+
+                    self.showError('Something went wrong. Please try again.');
                 },
-                complete: function() {
-                    self.isLoading = false;
+                complete: function () {
+                    self._activeXhr = null;
                 }
             });
         },
 
-        /**
-         * Render content into the page
-         */
-        renderContent: function(response, url, updateHistory) {
+        // ── Content swap ─────────────────────────────────────────────────────────
+
+        _swapContent: function (response, url, updateHistory) {
             const self = this;
             const $content = $(this.config.contentSelector);
+            const dur = this.config.transitionDuration;
 
-            // Fade out current content
-            $content.fadeOut(this.config.transitionDuration, function() {
-                // Update content
-                if (response.html) {
-                    $content.html(response.html);
-                }
+            $content.fadeTo(dur, 0, function () {
+                if (response.html) $content.html(response.html);
 
-                // Update title
-                if (response.title) {
-                    document.title = response.title;
-                }
+                if (response.title) document.title = response.title;
+                if (response.meta)  self.updateMetaTags(response.meta);
 
-                // Update meta tags
-                if (response.meta) {
-                    self.updateMetaTags(response.meta);
-                }
-
-                // Execute inline scripts
-                if (response.scripts) {
-                    self.executeScripts(response.scripts);
-                }
-
-                // Update browser history
                 if (updateHistory && self.config.enableHistory) {
-                    history.pushState(
-                        { route: url },
-                        response.title || document.title,
-                        url
-                    );
+                    history.pushState({ route: url }, response.title || document.title, url);
                 }
 
-                // Update current route
                 self.currentRoute = url;
 
-                // Fade in new content
-                $content.fadeIn(self.config.transitionDuration, function() {
-                    self.hideLoading();
-                    
-                    // Trigger custom event for page loaded
-                    $(document).trigger('page:loaded', [url, response]);
-                    
-                    // Scroll to top
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                });
-
-                // Re-bind events for new content
+                // Re-run inline scripts from newly loaded HTML
                 self.bindDynamicEvents();
+
+                $content.fadeTo(dur, 1, function () {
+                    self.hideLoading();
+                    window.scrollTo({ top: 0, behavior: 'instant' });
+                    $(document).trigger('page:loaded', [url, response]);
+                });
             });
         },
 
-        /**
-         * Submit form via AJAX
-         */
-        submitForm: function(url, method, formData, $form) {
-            const self = this;
-            const $submitBtn = $form.find('[type="submit"]');
-            const originalBtnText = $submitBtn.html();
+        // ── Form submissions ─────────────────────────────────────────────────────
 
-            if ($submitBtn.prop('disabled')) {
-                return $.Deferred().reject({status: 400, responseJSON: {message: 'Form is already submitting'}});
+        bindFormEvents: function () {
+            const self = this;
+            const submitting = new WeakSet();
+
+            $(document).on('submit', 'form[data-ajax]', function (e) {
+                e.preventDefault();
+                if (submitting.has(this)) return;
+                submitting.add(this);
+
+                const $form = $(this);
+                const method = ($form.attr('method') || 'POST').toUpperCase();
+                const action = $form.attr('action') || window.location.pathname;
+
+                self.submitForm(action, method, new FormData(this), $form)
+                    .always(function () { submitting.delete($form[0]); });
+            });
+        },
+
+        submitForm: function (url, method, formData, $form) {
+            const self = this;
+            const $btn = $form.find('[type="submit"]');
+            const origHtml = $btn.html();
+
+            if ($btn.prop('disabled')) {
+                return $.Deferred().reject();
             }
 
-            $submitBtn.prop('disabled', true).html('<span class="spinner"></span> Loading...');
+            $btn.prop('disabled', true).html('<span class="spinner"></span> Loading…');
 
             return $.ajax({
                 url: url,
-                method: method.toUpperCase(),
+                method: method,
                 data: formData,
                 processData: false,
                 contentType: false,
                 dataType: 'json',
-                success: function(response) {
+                success: function (response) {
                     if (response.success) {
-                        // Show success message
                         self.showSuccess(response.message || 'Success!');
-
-                        // Redirect if specified
                         if (response.redirect) {
-                            setTimeout(function() {
+                            // Short delay so the user sees the success toast
+                            setTimeout(function () {
                                 self.navigate(response.redirect, true);
-                            }, 1000);
+                            }, 500);
                         }
-
-                        // Reset form if specified
-                        if (response.resetForm) {
-                            $form[0].reset();
-                        }
-
-                        // Trigger custom event
+                        if (response.resetForm) $form[0].reset();
                         $(document).trigger('form:success', [response, $form]);
                     } else {
                         self.showError(response.message || 'An error occurred');
-                        
-                        // Show validation errors
-                        if (response.errors) {
-                            self.showValidationErrors($form, response.errors);
-                        }
+                        if (response.errors) self.showValidationErrors($form, response.errors);
                     }
                 },
-                error: function(jqxhr) {
-                    const response = jqxhr.responseJSON;
-                    self.showError(response?.message || 'Form submission failed');
+                error: function (jqxhr) {
+                    const res = jqxhr.responseJSON;
+                    self.showError((res && res.message) ? res.message : 'Form submission failed');
+                    if (res && res.errors) self.showValidationErrors($form, res.errors);
                 },
-                complete: function() {
-                    $submitBtn.prop('disabled', false).html(originalBtnText);
+                complete: function () {
+                    $btn.prop('disabled', false).html(origHtml);
                 }
             });
         },
 
-        /**
-         * Show validation errors on form fields
-         */
-        showValidationErrors: function($form, errors) {
-            // Clear previous errors
+        showValidationErrors: function ($form, errors) {
             $form.find('.error-message').remove();
-            $form.find('.error').removeClass('error');
+            $form.find('.input-error').removeClass('input-error');
 
-            // Display new errors
-            $.each(errors, function(field, messages) {
+            $.each(errors, function (field, messages) {
                 const $field = $form.find('[name="' + field + '"]');
-                $field.addClass('error');
-                
-                const errorHtml = '<div class="error-message">' + messages.join('<br>') + '</div>';
-                $field.after(errorHtml);
+                $field.addClass('input-error');
+                $field.after('<div class="error-message">' + messages.join('<br>') + '</div>');
             });
         },
 
-        /**
-         * Update meta tags dynamically
-         */
-        updateMetaTags: function(meta) {
-            $.each(meta, function(name, content) {
-                let $meta = $('meta[name="' + name + '"]');
-                if ($meta.length === 0) {
-                    $meta = $('<meta name="' + name + '">');
-                    $('head').append($meta);
-                }
-                $meta.attr('content', content);
-            });
-        },
+        // ── Dynamic events after content swap ────────────────────────────────────
 
-        /**
-         * Execute inline scripts from AJAX response
-         * Uses DOM-based execution instead of eval() to avoid XSS risk
-         */
-        executeScripts: function(scripts) {
-            if (Array.isArray(scripts)) {
-                scripts.forEach(function(scriptContent) {
-                    try {
-                        var script = document.createElement('script');
-                        script.textContent = scriptContent;
-                        document.head.appendChild(script);
-                        document.head.removeChild(script);
-                    } catch (e) {
-                        // Silent error handling - no console logs in production
-                    }
-                });
-            }
-        },
-
-        /**
-         * Bind events for dynamically loaded content
-         */
-        bindDynamicEvents: function() {
-            // Re-execute only *inline* scripts from AJAX-loaded content.
-            // Scripts with an external src are skipped to prevent XSS via
-            // attacker-controlled src attributes in server responses.
+        bindDynamicEvents: function () {
             const $content = $(this.config.contentSelector);
-            $content.find('script').each(function() {
+
+            $content.find('script').each(function () {
+                const s = document.createElement('script');
                 if (this.src) {
-                    // Only allow same-origin script src values; skip all others.
                     try {
-                        const scriptUrl = new URL(this.src, window.location.origin);
-                        if (scriptUrl.hostname !== window.location.hostname) {
-                            return; // Skip cross-origin scripts
-                        }
-                        const script = document.createElement('script');
-                        script.src = this.src;
-                        document.head.appendChild(script);
-                        setTimeout(() => script.remove(), 500);
+                        const u = new URL(this.src, window.location.origin);
+                        if (u.hostname !== window.location.hostname) return;
+                        s.src = this.src;
+                        s.async = false;
+                        document.head.appendChild(s);
+                        setTimeout(function () { s.remove(); }, 1000);
                     } catch (e) { /* ignore malformed src */ }
                 } else {
-                    try {
-                        const script = document.createElement('script');
-                        script.textContent = this.textContent;
-                        document.head.appendChild(script);
-                        document.head.removeChild(script);
-                    } catch (e) { /* silent */ }
+                    s.textContent = this.textContent;
+                    document.head.appendChild(s);
+                    document.head.removeChild(s);
                 }
             });
-            
-            // Trigger custom event for other scripts to hook into
+
+            // Re-read CSRF token in case a new session was started (e.g. after login)
+            NativeApp.setupCSRFToken();
+
             $(document).trigger('content:updated');
         },
 
-        /**
-         * Check if link is external
-         */
-        isExternalLink: function(url) {
-            if (!url) return false;
-            // Parse via a temporary anchor so the browser resolves relative URLs.
-            // An external link is one whose hostname differs from the current page.
-            const link = document.createElement('a');
-            link.href = url;
-            return link.hostname !== '' && link.hostname !== window.location.hostname;
+        // ── Loading indicator ─────────────────────────────────────────────────────
+
+        showLoading: function () {
+            const bar = document.getElementById('loading-bar');
+            if (!bar) return;
+            clearTimeout(this._loadingTimer);
+            bar.style.transition = 'none';
+            bar.style.width = '0%';
+            bar.style.opacity = '1';
+            // Force reflow so the width reset takes effect before the animation
+            bar.offsetWidth; // eslint-disable-line no-unused-expressions
+            bar.style.transition = 'width 15s cubic-bezier(0.1, 0.05, 0, 1)';
+            bar.style.width = '85%';
         },
 
-        /**
-         * Clear cache for specific route
-         */
-        clearRouteCache: function(url) {
-            delete this.cache[url];
-            if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
-                console.log('🧹 Cache cleared for:', url);
-            }
+        hideLoading: function () {
+            const bar = document.getElementById('loading-bar');
+            if (!bar) return;
+            clearTimeout(this._loadingTimer);
+            bar.style.transition = 'width 0.1s ease';
+            bar.style.width = '100%';
+            this._loadingTimer = setTimeout(function () {
+                bar.style.transition = 'opacity 0.2s ease';
+                bar.style.opacity = '0';
+                setTimeout(function () {
+                    bar.style.width = '0%';
+                    bar.style.opacity = '1';
+                }, 250);
+            }, 150);
         },
 
-        /**
-         * Show loading indicator
-         */
-        showLoading: function() {
-            $('body').addClass(this.config.loadingClass);
-            
-            // Show loading bar if exists
-            $('#loading-bar').addClass('active');
+        // ── Notifications ─────────────────────────────────────────────────────────
+
+        showSuccess: function (msg) { this.showNotification(msg, 'success'); },
+        showError:   function (msg) { this.showNotification(msg, 'error'); },
+
+        showNotification: function (message, type) {
+            const $n = $('<div class="notification notification-' + (type || 'info') + '">' + message + '</div>');
+            $('body').append($n);
+            requestAnimationFrame(function () { $n.addClass('show'); });
+            setTimeout(function () {
+                $n.removeClass('show');
+                setTimeout(function () { $n.remove(); }, 350);
+            }, 3500);
         },
 
-        /**
-         * Hide loading indicator
-         */
-        hideLoading: function() {
-            $('body').removeClass(this.config.loadingClass);
-            
-            // Hide loading bar
-            $('#loading-bar').removeClass('active');
-        },
+        // ── Utilities ─────────────────────────────────────────────────────────────
 
-        /**
-         * Show success notification
-         */
-        showSuccess: function(message) {
-            this.showNotification(message, 'success');
-        },
-
-        /**
-         * Show error notification
-         */
-        showError: function(message) {
-            this.showNotification(message, 'error');
-        },
-
-        /**
-         * Show notification toast
-         */
-        showNotification: function(message, type) {
-            type = type || 'info';
-            
-            const $notification = $('<div class="notification notification-' + type + '">' + message + '</div>');
-            $('body').append($notification);
-            
-            setTimeout(function() {
-                $notification.addClass('show');
-            }, 10);
-            
-            setTimeout(function() {
-                $notification.removeClass('show');
-                setTimeout(function() {
-                    $notification.remove();
-                }, 300);
-            }, 3000);
-        },
-
-        /**
-         * Preload critical assets for commonly visited routes
-         * Only preloads routes that are registered in the application
-         */
-        preloadCriticalAssets: function() {
-            // Define routes to preload — update this list to match your actual routes
-            var criticalRoutes = window.PRELOAD_ROUTES || [];
-
-            criticalRoutes.forEach(function(route) {
-                if (route !== window.location.pathname) {
-                    $.ajax({
-                        url: route,
-                        method: 'GET',
-                        dataType: 'json',
-                        success: function(response) {
-                            NativeApp.cache[route] = response;
-                        }
-                        // No error handler — silent background prefetch
-                    });
-                }
+        updateMetaTags: function (meta) {
+            $.each(meta, function (name, content) {
+                let $m = $('meta[name="' + name + '"]');
+                if (!$m.length) { $m = $('<meta name="' + name + '">'); $('head').append($m); }
+                $m.attr('content', content);
             });
         },
 
-        /**
-         * Clear all navigation cache
-         */
-        clearCache: function() {
-            this.cache = {};
-            if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
-                console.log('Navigation cache cleared');
-            }
+        isExternalLink: function (url) {
+            if (!url) return false;
+            const a = document.createElement('a');
+            a.href = url;
+            return a.hostname !== '' && a.hostname !== window.location.hostname;
         },
 
-        /**
-         * API helper for making AJAX calls
-         */
+        _isPrivateRoute: function (url) {
+            const priv = ['/dashboard', '/users', '/login', '/register', '/logout',
+                          '/forgot-password', '/profile', '/account', '/settings'];
+            return priv.some(function (p) { return url === p || url.startsWith(p + '/'); });
+        },
+
+        clearCache: function () { this.cache = {}; },
+
+        // ── Public API ────────────────────────────────────────────────────────────
+
         api: {
-            get: function(url, data) {
-                return $.ajax({
-                    url: url,
-                    method: 'GET',
-                    data: data,
-                    dataType: 'json'
-                });
+            get: function (url, data) {
+                return $.ajax({ url: url, method: 'GET', data: data, dataType: 'json' });
             },
-
-            post: function(url, data) {
-                return $.ajax({
-                    url: url,
-                    method: 'POST',
-                    data: JSON.stringify(data),
-                    contentType: 'application/json',
-                    dataType: 'json'
-                });
+            post: function (url, data) {
+                return $.ajax({ url: url, method: 'POST', data: JSON.stringify(data),
+                    contentType: 'application/json', dataType: 'json' });
             },
-
-            put: function(url, data) {
-                return $.ajax({
-                    url: url,
-                    method: 'PUT',
-                    data: JSON.stringify(data),
-                    contentType: 'application/json',
-                    dataType: 'json'
-                });
+            put: function (url, data) {
+                return $.ajax({ url: url, method: 'PUT', data: JSON.stringify(data),
+                    contentType: 'application/json', dataType: 'json' });
             },
-
-            delete: function(url) {
+            delete: function (url) {
                 const token = $('meta[name="csrf-token"]').attr('content');
-                return $.ajax({
-                    url: url,
-                    method: 'DELETE',
-                    dataType: 'json',
-                    headers: {
-                        'X-CSRF-TOKEN': token || '',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
-                });
+                return $.ajax({ url: url, method: 'DELETE', dataType: 'json',
+                    headers: { 'X-CSRF-TOKEN': token || '', 'X-Requested-With': 'XMLHttpRequest' } });
             }
         }
     };
 
-    // Auto-initialize when DOM is ready
-    $(document).ready(function() {
+    // ── Boot ─────────────────────────────────────────────────────────────────────
+
+    $(document).ready(function () {
         NativeApp.init();
-        
-        // Enable detailed console logging
-        // Silent initialization - only log in debug mode
+
         if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
-            console.log('%c🚀 NativeApp Initialized', 'color: #10b981; font-size: 16px; font-weight: bold');
-            console.log('%cDebug Mode: ON', 'color: #3b82f6');
-            console.log('%cZero-refresh navigation active', 'color: #10b981');
+            console.log('%c⚡ VelocityPHP SPA ready', 'color:#6366f1;font-weight:bold;font-size:14px');
         }
     });
 
 })(jQuery);
 
-// Global error handler for uncaught errors
-window.addEventListener('error', function(event) {
-    // Completely silent error handling - no console logs
-    // Ignore errors from external scripts (browser extensions, etc.)
-    if (event.filename && (
-        event.filename.includes('spoofer') || 
-        event.filename.includes('extension') ||
-        event.filename.includes('chrome-extension') ||
-        event.filename.includes('moz-extension')
-    )) {
-        return; // Ignore external script errors
+// Silence noisy extension/cross-origin errors
+window.addEventListener('error', function (e) {
+    if (!e.filename) return;
+    if (e.filename.includes('extension') || e.filename.includes('chrome-extension') ||
+        e.filename.includes('moz-extension')) return;
+    if (window.NativeApp && e.filename.includes('/assets/js/') &&
+        !window.location.search.includes('_=')) {
+        NativeApp.showError('A script error occurred. Please refresh the page.');
     }
-    
-    // Only show user-friendly error for real application errors
-    // Don't show errors on page refresh/load
-    if (window.NativeApp && event.filename && 
-        (event.filename.includes('app.js') || event.filename.includes('/assets/')) &&
-        !window.location.href.includes('?_=')) {
-        NativeApp.showError('An error occurred. Please try again.');
-    }
-});
-
-// Global AJAX error handler
-$(document).ajaxError(function(event, jqxhr, settings, thrownError) {
-    // Only log in debug mode
-    // Silent error handling - no console logs in production
-    // Errors are handled gracefully by the application
 });
