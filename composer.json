@@ -1,15 +1,34 @@
 {
     "name": "velocityphp/framework",
-    "description": "Ultra-fast, production-ready PHP framework with modern architecture",
+    "description": "Ultra-fast, production-ready PHP framework with MVC architecture, SPA-like AJAX navigation, built-in caching, rate limiting, and a complete REST API layer.",
     "type": "project",
-    "keywords": ["php", "framework", "velocityphp", "fast", "performance", "mvc"],
+    "keywords": [
+        "php",
+        "framework",
+        "velocityphp",
+        "mvc",
+        "fast",
+        "performance",
+        "rest-api",
+        "caching",
+        "middleware",
+        "shared-hosting"
+    ],
+    "homepage": "https://github.com/prasangapokharel/VelocityPHP",
     "license": "MIT",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "authors": [
         {
-            "name": "VelocityPhp Team"
+            "name": "Prasanga Pokharel",
+            "email": "prasanga@prasangapokharel.com.np",
+            "homepage": "https://www.prasangapokharel.com.np",
+            "role": "Lead Developer"
         }
     ],
+    "support": {
+        "issues": "https://github.com/prasangapokharel/VelocityPHP/issues",
+        "source": "https://github.com/prasangapokharel/VelocityPHP"
+    },
     "require": {
         "php": ">=7.4",
         "ext-pdo": "*",
@@ -21,7 +40,7 @@
     },
     "suggest": {
         "ext-opcache": "For optimal performance",
-        "ext-apcu": "For enhanced caching"
+        "ext-apcu": "For enhanced in-memory caching"
     },
     "autoload": {
         "psr-4": {
@@ -45,7 +64,7 @@
     "scripts": {
         "start": "php start.php",
         "serve": "php -S localhost:8000 -t public",
-        "test": "phpunit",
+        "test": "phpunit --testdox",
         "post-install-cmd": [
             "@php -r \"!file_exists('.env') && copy('.env.example', '.env');\""
         ]

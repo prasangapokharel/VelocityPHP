@@ -32,10 +32,9 @@ node_modules/
 Thumbs.db
 desktop.ini
 
-# Test files
-/tests/
-phpunit.xml
+# Test artifacts
 .phpunit.result.cache
+/coverage/
 
 # Temporary files
 *.tmp

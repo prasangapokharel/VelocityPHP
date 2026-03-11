@@ -43,8 +43,10 @@ class Auth
             self::createRememberToken($user['id']);
         }
         
-        // Note: last_login update removed as column may not exist
-        // Add 'last_login' to UserModel fillable if you want to track it
+        // Update last login
+        $userModel->update($user['id'], [
+            'last_login' => date('Y-m-d H:i:s')
+        ]);
         
         self::$user = $user;
         return true;
@@ -55,17 +57,8 @@ class Auth
      */
     private static function createSession($userId)
     {
-        // Ensure session is started
-        if (session_status() === PHP_SESSION_NONE) {
-            if (!headers_sent()) {
-                session_start();
-            }
-        }
-        
-        // Regenerate session ID to prevent fixation attacks (only if session active)
-        if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
-            @session_regenerate_id(true);
-        }
+        // Regenerate session ID to prevent fixation attacks
+        session_regenerate_id(true);
         
         // Store user data in session
         $_SESSION['user_id'] = $userId;
@@ -236,24 +229,16 @@ class Auth
             list($selector) = explode(':', $token);
             self::deleteRememberToken($selector);
             
-            // Delete cookie (only if headers not sent)
-            if (!headers_sent()) {
-                setcookie(self::$rememberCookie, '', time() - 3600, '/');
-            }
+            // Delete cookie
+            setcookie(self::$rememberCookie, '', time() - 3600, '/');
         }
         
         // Clear session
         $_SESSION = [];
+        session_destroy();
         
-        // Destroy session if active
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            @session_destroy();
-        }
-        
-        // Start new session (only if headers not sent)
-        if (!headers_sent() && session_status() === PHP_SESSION_NONE) {
-            @session_start();
-        }
+        // Start new session
+        session_start();
         
         self::$user = null;
     }

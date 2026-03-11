@@ -24,12 +24,12 @@ class HomeController extends BaseController
     }
     
     /**
-     * Display documentation page
+     * Display about page
      */
-    public function documentation($params, $isAjax)
+    public function about($params, $isAjax)
     {
         if ($isAjax) {
-            return $this->view('documentation/index', [], 'Documentation - VelocityPhp');
+            return $this->view('about/index', [], 'About - VelocityPhp');
         }
         
         // For non-AJAX (refresh), the router handles full page rendering
