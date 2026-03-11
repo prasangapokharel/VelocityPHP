@@ -26,6 +26,7 @@
 - [Quick Start](#quick-start)
 - [Directory Structure](#directory-structure)
 - [Routing](#routing)
+- [Static Pages](#static-pages)
 - [Controllers](#controllers)
 - [Models & Database](#models--database)
 - [Middleware](#middleware)
@@ -282,29 +283,122 @@ VelocityPHP/
 
 ## Routing
 
-Routes are defined in `src/routes/web.php`:
+Routes are defined in `src/routes/web.php` using `RouteCollection`:
 
 ```php
-use App\Utils\Route;
+use App\Utils\RouteCollection;
 
 // Basic GET route
-Route::get('/', [HomeController::class, 'index']);
+RouteCollection::get('/', 'HomeController@index')->name('home');
 
 // POST route
-Route::post('/login', [AuthController::class, 'login']);
+RouteCollection::post('/login', 'AuthController@login');
 
-// Route with parameter
-Route::get('/users/{id}', [UsersController::class, 'show']);
+// Route with named parameter
+RouteCollection::get('/api/users/{id}', 'ApiController@getUser');
 
-// Route group with middleware
-Route::group(['middleware' => 'auth'], function () {
-    Route::get('/dashboard', [DashboardController::class, 'index']);
-    Route::get('/profile', [ProfileController::class, 'index']);
+// Full REST resource (index, show, store, update, destroy)
+RouteCollection::resource('posts', 'PostsController');
+
+// API versioning group
+RouteCollection::apiPrefix('v1', function () {
+    RouteCollection::get('/stats', 'StatsController@index');
 });
-
-// API routes
-Route::get('/api/users', [ApiController::class, 'users']);
 ```
+
+**File-based routing** also works automatically — if you drop a view file at
+`src/views/pages/contact/index.php`, the URL `/contact` is live with zero config.
+No route registration needed.
+
+---
+
+## Static Pages
+
+VelocityPHP has first-class support for purely static pages — **no database, no
+controller, no route registration required.**
+
+### How it works
+
+The router checks `src/views/pages/{uri}/index.php` automatically for any URI.
+If the file exists it is served inside the layout. The DB connection is lazy —
+it is only opened when a model actually runs a query, so a static-only site
+**never touches the database at all**.
+
+### Creating a static page
+
+1. Create the view file:
+
+```
+src/views/pages/
+├── about/
+│   └── index.php      ← available at /about
+├── contact/
+│   └── index.php      ← available at /contact
+├── pricing/
+│   └── index.php      ← available at /pricing
+└── index/
+    └── index.php      ← available at /
+```
+
+2. Write plain HTML (or PHP) in the file — it is automatically wrapped in the
+   shared layout (`src/views/layouts/main.php`):
+
+```php
+<!-- src/views/pages/contact/index.php -->
+<div class="container">
+    <h1>Contact Us</h1>
+    <p>Email us at <a href="mailto:hello@example.com">hello@example.com</a></p>
+</div>
+```
+
+That is it. No controller, no route, no migration.
+
+### Static site with no database
+
+If your site has no dynamic data at all (no login, no users, no API), you can
+leave the DB credentials blank in `.env.velocity` and the framework will boot
+fine:
+
+```env
+APP_NAME="My Static Site"
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://mysite.com
+
+# Leave DB_* blank — no connection will be attempted for static pages
+DB_CONNECTION=mysql
+DB_HOST=localhost
+DB_NAME=
+DB_USER=
+DB_PASS=
+
+CACHE_ENABLED=true
+SESSION_SECURE=true
+```
+
+The VelocityCache (SQLite) and session still work independently of MySQL.
+
+### Adding PHP logic to a static page
+
+View files are plain PHP, so you can include conditional content, loops, or
+`date()` calls without a controller:
+
+```php
+<!-- src/views/pages/home/index.php -->
+<div class="container">
+    <h1>Welcome</h1>
+    <p>Today is <?= date('l, F j Y') ?></p>
+
+    <?php if (isset($_GET['ref'])): ?>
+        <p>Referred by: <?= htmlspecialchars($_GET['ref']) ?></p>
+    <?php endif; ?>
+</div>
+```
+
+### Using the layout
+
+The layout file is `src/views/layouts/main.php`. Edit it to change the global
+header, footer, navigation, and assets. All pages automatically use it.
 
 ---
 
@@ -315,13 +409,31 @@ Controllers extend `BaseController` and return views or JSON responses:
 ```php
 namespace App\Controllers;
 
-class HomeController extends BaseController
+class PostsController extends BaseController
 {
-    public function index(): void
+    public function index($params, $isAjax)
     {
-        $this->view('pages/index/index', [
-            'title' => 'Welcome to VelocityPHP',
+        // Return null to let the router render src/views/pages/posts/index.php
+        return null;
+    }
+
+    public function show($params, $isAjax)
+    {
+        $post = (new \App\Models\PostModel())->find($params['id']);
+        if (!$post) {
+            return $this->jsonError('Post not found', [], 404);
+        }
+        return $this->view('posts/show', ['post' => $post], 'Post Detail');
+    }
+
+    public function store($params, $isAjax)
+    {
+        $data = $this->sanitize([
+            'title'   => $this->post('title'),
+            'content' => $this->post('content'),
         ]);
+        $id = (new \App\Models\PostModel())->create($data);
+        return $this->jsonSuccess('Post created', ['id' => $id]);
     }
 }
 ```

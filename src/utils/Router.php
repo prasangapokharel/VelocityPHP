@@ -468,7 +468,7 @@ class Router
         $routeSegments = $route === 'index' ? [] : explode('/', $route);
         
         foreach ($routeSegments as $index => $segment) {
-            if ($segment[0] === '[' && $segment[strlen($segment) - 1] === ']') {
+            if ($segment !== '' && $segment[0] === '[' && $segment[strlen($segment) - 1] === ']') {
                 $paramName = substr($segment, 1, -1);
                 $params[$paramName] = $uriSegments[$index] ?? null;
             }
