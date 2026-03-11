@@ -151,6 +151,21 @@ class TableBuilder
         $this->columns[] = $this->q($column) . ' BIGINT';
         return $this;
     }
+
+    /**
+     * BIGINT UNSIGNED — use this for foreign keys that reference an auto-increment PK
+     * created with id() / bigIncrements(), which are BIGINT UNSIGNED in MySQL.
+     */
+    public function unsignedBigInteger($column)
+    {
+        if ($this->driver === 'pgsql') {
+            // PostgreSQL has no UNSIGNED; BIGINT is always signed and compatible with BIGSERIAL
+            $this->columns[] = $this->q($column) . ' BIGINT';
+        } else {
+            $this->columns[] = $this->q($column) . ' BIGINT UNSIGNED';
+        }
+        return $this;
+    }
     
     public function boolean($column)
     {
@@ -322,13 +337,14 @@ class TableBuilder
             return $sql;
         } else {
             // ALTER TABLE
-            if (empty($this->columns)) {
+            // Return empty string only if there is truly nothing to do.
+            if (empty($this->columns) && empty($this->foreignKeys) && empty($separateIndexes)) {
                 return '';
             }
-            
+
             $tableQ = $this->q($this->table);
             $alterations = [];
-            
+
             foreach ($this->columns as $column) {
                 if (strpos($column, 'DROP COLUMN') === 0 || strpos($column, 'RENAME COLUMN') === 0) {
                     $alterations[] = $column;
@@ -336,13 +352,18 @@ class TableBuilder
                     $alterations[] = 'ADD COLUMN ' . $column;
                 }
             }
-            
+
+            // Foreign keys in ALTER TABLE context → ADD CONSTRAINT
+            foreach ($this->foreignKeys as $fk) {
+                $alterations[] = 'ADD ' . $fk->toSql();
+            }
+
             $sql = "ALTER TABLE {$tableQ} " . implode(', ', $alterations);
-            
+
             if (!empty($separateIndexes)) {
                 $sql .= '; ' . implode('; ', $separateIndexes);
             }
-            
+
             return $sql;
         }
     }

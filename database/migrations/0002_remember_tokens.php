@@ -13,7 +13,7 @@ class Migration_0002_Remember_Tokens extends Migration
     {
         $this->createTable('remember_tokens', function ($table) {
             $table->id();
-            $table->bigInteger('user_id');
+            $table->unsignedBigInteger('user_id');
             $table->string('selector', 64)->unique();
             $table->string('hashed_validator', 255);
             $table->timestamp('expires_at');
