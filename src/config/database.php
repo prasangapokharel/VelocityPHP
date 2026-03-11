@@ -8,7 +8,7 @@
  */
 
 return [
-    'default' => 'mysql',
+    'default' => getenv('DB_CONNECTION') ?: 'mysql',
     
     'connections' => [
         'mysql' => [
@@ -17,7 +17,7 @@ return [
             'port' => getenv('DB_PORT') ?: 3306,
             'database' => getenv('DB_NAME') ?: 'native',
             'username' => getenv('DB_USER') ?: 'root',
-            'password' => getenv('DB_PASS') ?: '123456',
+            'password' => getenv('DB_PASS') ?: '',
             'charset' => 'utf8mb4',
             'collation' => 'utf8mb4_unicode_ci',
             'options' => [

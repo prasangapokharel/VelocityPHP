@@ -146,7 +146,7 @@
             </a>
         </div>
         <div class="notice">
-            If this keeps happening, please check the <strong>logs/error.log</strong> file or enable <code>APP_DEBUG=true</code> in your <code>.env</code> for a detailed stack trace.
+            If this keeps happening, please check the <strong>logs/error.log</strong> file or enable <code>APP_DEBUG=true</code> in your <code>.env.velocity</code> for a detailed stack trace.
         </div>
     </div>
     <div class="brand">

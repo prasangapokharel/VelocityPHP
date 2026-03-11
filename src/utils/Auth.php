@@ -17,6 +17,23 @@ class Auth
     private static $rememberCookie = 'velocityphp_remember';
     
     /**
+     * Start a session for a known user ID without re-verifying credentials.
+     * Use this after registration to avoid the sleep(1) brute-force delay.
+     */
+    public static function loginById($userId)
+    {
+        $userModel = new UserModel();
+        $user = $userModel->find($userId);
+        if (!$user || $user['status'] !== 'active') {
+            return false;
+        }
+        self::createSession($user['id']);
+        $userModel->update($user['id'], ['last_login' => date('Y-m-d H:i:s')]);
+        self::$user = $user;
+        return true;
+    }
+    
+    /**
      * Login user with optional "remember me"
      */
     public static function login($email, $password, $remember = false)
@@ -84,11 +101,11 @@ class Auth
         // Hash validator before storing
         $hashedValidator = password_hash($validator, PASSWORD_DEFAULT);
         
-        // Store in database
-        $db = (new UserModel())->query(
-            "INSERT INTO remember_tokens (user_id, selector, hashed_validator, expires_at) 
-             VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))",
-            [$userId, $selector, $hashedValidator]
+        // Store in database — expires_at computed in PHP for cross-DB compatibility
+        $expiresAt = date('Y-m-d H:i:s', time() + (30 * 86400));
+        (new UserModel())->execute(
+            "INSERT INTO remember_tokens (user_id, selector, hashed_validator, expires_at) VALUES (?, ?, ?, ?)",
+            [$userId, $selector, $hashedValidator, $expiresAt]
         );
         
         // Set secure cookie (30 days)
@@ -133,11 +150,9 @@ class Auth
             return false;
         }
         
-        // Verify IP hasn't changed (prevent session hijacking)
-        if ($_SESSION['user_ip'] !== self::getIp()) {
-            self::logout();
-            return false;
-        }
+        // Note: IP binding is intentionally omitted here.
+        // It breaks users behind NAT, proxies, and mobile networks.
+        // Session token + user-agent check below is sufficient.
         
         // Verify user agent hasn't changed
         if ($_SESSION['user_agent'] !== self::getUserAgent()) {
@@ -169,11 +184,12 @@ class Auth
         $token = $_COOKIE[self::$rememberCookie];
         list($selector, $validator) = explode(':', $token);
         
-        // Get token from database
+        // Get token from database — use PHP date so this works on MySQL, SQLite, and PostgreSQL
+        $now = date('Y-m-d H:i:s');
         $result = (new UserModel())->query(
             "SELECT * FROM remember_tokens 
-             WHERE selector = ? AND expires_at > NOW() LIMIT 1",
-            [$selector]
+             WHERE selector = ? AND expires_at > ? LIMIT 1",
+            [$selector, $now]
         );
         
         if (empty($result)) {
@@ -233,12 +249,13 @@ class Auth
             setcookie(self::$rememberCookie, '', time() - 3600, '/');
         }
         
-        // Clear session
+        // Clear session data
         $_SESSION = [];
-        session_destroy();
         
-        // Start new session
+        // Destroy the session file on disk, then start a fresh one.
+        session_destroy();
         session_start();
+        session_regenerate_id(true);
         
         self::$user = null;
     }
@@ -346,14 +363,18 @@ class Auth
     
     /**
      * Hash password (for registration)
+     * Falls back to bcrypt on hosts that don't have the Argon2 extension.
      */
     public static function hashPassword($password)
     {
-        return password_hash($password, PASSWORD_ARGON2ID, [
-            'memory_cost' => 65536,
-            'time_cost' => 4,
-            'threads' => 3
-        ]);
+        if (defined('PASSWORD_ARGON2ID')) {
+            return password_hash($password, PASSWORD_ARGON2ID, [
+                'memory_cost' => 65536,
+                'time_cost'   => 4,
+                'threads'     => 3,
+            ]);
+        }
+        return password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
     }
     
     /**
@@ -361,9 +382,11 @@ class Auth
      */
     public static function cleanup()
     {
-        // Delete expired remember tokens
+        // Use PHP-side date so this works on MySQL, SQLite, and PostgreSQL
+        $now = date('Y-m-d H:i:s');
         (new UserModel())->execute(
-            "DELETE FROM remember_tokens WHERE expires_at < NOW()"
+            "DELETE FROM remember_tokens WHERE expires_at < ?",
+            [$now]
         );
     }
 }

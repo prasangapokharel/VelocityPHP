@@ -1,10 +1,10 @@
 <?php
 /**
  * VelocityPhp Migration System
- * Database migrations management
+ * Database migrations management — supports MySQL, PostgreSQL, SQLite
  * 
  * @package VelocityPhp
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 namespace App\Database;
@@ -15,10 +15,16 @@ use PDOException;
 abstract class Migration
 {
     protected $connection;
+    protected $driver;
     
     public function __construct($connection)
     {
         $this->connection = $connection;
+        try {
+            $this->driver = $connection->getAttribute(PDO::ATTR_DRIVER_NAME);
+        } catch (\Exception $e) {
+            $this->driver = 'mysql';
+        }
     }
     
     abstract public function up();
@@ -27,7 +33,7 @@ abstract class Migration
     
     protected function createTable($table, callable $callback)
     {
-        $builder = new TableBuilder($table, 'create');
+        $builder = new TableBuilder($table, 'create', $this->driver);
         $callback($builder);
         $sql = $builder->toSql();
         return $this->execute($sql);
@@ -35,13 +41,16 @@ abstract class Migration
     
     protected function dropTable($table)
     {
-        $sql = "DROP TABLE IF EXISTS `{$table}`";
+        $q = $this->driver === 'pgsql'
+            ? '"' . str_replace('"', '""', $table) . '"'
+            : '`' . str_replace('`', '', $table) . '`';
+        $sql = "DROP TABLE IF EXISTS {$q}";
         return $this->execute($sql);
     }
     
     protected function table($table, callable $callback)
     {
-        $builder = new TableBuilder($table, 'alter');
+        $builder = new TableBuilder($table, 'alter', $this->driver);
         $callback($builder);
         $sql = $builder->toSql();
         return $this->execute($sql);
@@ -52,7 +61,7 @@ abstract class Migration
         try {
             return $this->connection->exec($sql);
         } catch (PDOException $e) {
-            throw new \Exception("Migration failed: " . $e->getMessage());
+            throw new \Exception("Migration failed: " . $e->getMessage() . "\nSQL: " . $sql);
         }
     }
 }
@@ -61,15 +70,38 @@ class TableBuilder
 {
     private $table;
     private $type;
+    private $driver;
     private $columns = [];
     private $indexes = [];
     private $foreignKeys = [];
     
-    public function __construct($table, $type = 'create')
+    public function __construct($table, $type = 'create', $driver = 'mysql')
     {
         $this->table = $table;
         $this->type = $type;
+        $this->driver = $driver;
     }
+    
+    // ── Identifier quoting ────────────────────────────────────────────────────
+    
+    private function q($identifier)
+    {
+        if ($this->driver === 'pgsql') {
+            return '"' . str_replace('"', '""', $identifier) . '"';
+        }
+        return '`' . str_replace('`', '', $identifier) . '`';
+    }
+    
+    private function extractColumnName($columnDef)
+    {
+        // Match either backtick-quoted or double-quote-quoted identifier
+        if (preg_match('/[`"]([^`"]+)[`"]/', $columnDef, $matches)) {
+            return $matches[1];
+        }
+        return '';
+    }
+    
+    // ── Column definitions ────────────────────────────────────────────────────
     
     public function id($column = 'id')
     {
@@ -78,67 +110,77 @@ class TableBuilder
     
     public function bigIncrements($column)
     {
-        $this->columns[] = "`{$column}` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY";
+        if ($this->driver === 'pgsql') {
+            $this->columns[] = $this->q($column) . ' BIGSERIAL PRIMARY KEY';
+        } else {
+            $this->columns[] = $this->q($column) . ' BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY';
+        }
         return $this;
     }
     
     public function increments($column)
     {
-        $this->columns[] = "`{$column}` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY";
+        if ($this->driver === 'pgsql') {
+            $this->columns[] = $this->q($column) . ' SERIAL PRIMARY KEY';
+        } else {
+            $this->columns[] = $this->q($column) . ' INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY';
+        }
         return $this;
     }
     
     public function string($column, $length = 255)
     {
-        $this->columns[] = "`{$column}` VARCHAR({$length})";
+        $this->columns[] = $this->q($column) . " VARCHAR({$length})";
         return $this;
     }
     
     public function text($column)
     {
-        $this->columns[] = "`{$column}` TEXT";
+        $this->columns[] = $this->q($column) . ' TEXT';
         return $this;
     }
     
     public function integer($column)
     {
-        $this->columns[] = "`{$column}` INT";
+        $this->columns[] = $this->q($column) . ' INT';
         return $this;
     }
     
     public function bigInteger($column)
     {
-        $this->columns[] = "`{$column}` BIGINT";
+        $this->columns[] = $this->q($column) . ' BIGINT';
         return $this;
     }
     
     public function boolean($column)
     {
-        $this->columns[] = "`{$column}` BOOLEAN";
+        $this->columns[] = $this->q($column) . ' BOOLEAN';
         return $this;
     }
     
     public function decimal($column, $precision = 8, $scale = 2)
     {
-        $this->columns[] = "`{$column}` DECIMAL({$precision}, {$scale})";
+        $this->columns[] = $this->q($column) . " DECIMAL({$precision}, {$scale})";
         return $this;
     }
     
     public function date($column)
     {
-        $this->columns[] = "`{$column}` DATE";
+        $this->columns[] = $this->q($column) . ' DATE';
         return $this;
     }
     
     public function dateTime($column)
     {
-        $this->columns[] = "`{$column}` DATETIME";
+        // PostgreSQL uses TIMESTAMP instead of DATETIME
+        $type = ($this->driver === 'pgsql') ? 'TIMESTAMP' : 'DATETIME';
+        $this->columns[] = $this->q($column) . " {$type}";
         return $this;
     }
     
     public function timestamp($column)
     {
-        $this->columns[] = "`{$column}` TIMESTAMP";
+        $this->columns[] = $this->q($column) . ' TIMESTAMP';
         return $this;
     }
     
@@ -173,7 +215,11 @@ class TableBuilder
         $lastIndex = count($this->columns) - 1;
         if ($lastIndex >= 0) {
             $column = $this->extractColumnName($this->columns[$lastIndex]);
-            $this->indexes[] = "UNIQUE KEY `{$column}_unique` (`{$column}`)";
+            if ($this->driver === 'pgsql') {
+                $this->indexes[] = 'UNIQUE (' . $this->q($column) . ')';
+            } else {
+                $this->indexes[] = 'UNIQUE KEY ' . $this->q($column . '_unique') . ' (' . $this->q($column) . ')';
+            }
         }
         return $this;
     }
@@ -184,20 +230,31 @@ class TableBuilder
             $lastIndex = count($this->columns) - 1;
             if ($lastIndex >= 0) {
                 $column = $this->extractColumnName($this->columns[$lastIndex]);
-                $this->indexes[] = "KEY `{$column}_index` (`{$column}`)";
+                // Inline indexes inside CREATE TABLE are MySQL-only; for pgsql they must be separate.
+                // Store them separately so toSql() can handle them after the CREATE TABLE statement.
+                if ($this->driver === 'pgsql') {
+                    $this->indexes[] = '__SEPARATE__CREATE INDEX ON ' . $this->q($this->table) . ' (' . $this->q($column) . ')';
+                } else {
+                    $this->indexes[] = 'KEY ' . $this->q($column . '_index') . ' (' . $this->q($column) . ')';
+                }
             }
         } else {
             $columns = is_array($columns) ? $columns : [$columns];
             $name = implode('_', $columns) . '_index';
-            $cols = '`' . implode('`, `', $columns) . '`';
-            $this->indexes[] = "KEY `{$name}` ({$cols})";
+            if ($this->driver === 'pgsql') {
+                $cols = implode(', ', array_map([$this, 'q'], $columns));
+                $this->indexes[] = '__SEPARATE__CREATE INDEX ON ' . $this->q($this->table) . " ({$cols})";
+            } else {
+                $cols = implode(', ', array_map([$this, 'q'], $columns));
+                $this->indexes[] = 'KEY ' . $this->q($name) . " ({$cols})";
+            }
         }
         return $this;
     }
     
     public function foreign($column)
     {
-        $foreign = new ForeignKeyBuilder($column);
+        $foreign = new ForeignKeyBuilder($column, $this->driver);
         $this->foreignKeys[] = $foreign;
         return $foreign;
     }
@@ -205,7 +262,7 @@ class TableBuilder
     public function dropColumn($column)
     {
         if ($this->type === 'alter') {
-            $this->columns[] = "DROP COLUMN `{$column}`";
+            $this->columns[] = 'DROP COLUMN ' . $this->q($column);
         }
         return $this;
     }
@@ -213,61 +270,81 @@ class TableBuilder
     public function renameColumn($from, $to)
     {
         if ($this->type === 'alter') {
-            // This is simplified - full implementation would need column type
-            $this->columns[] = "CHANGE COLUMN `{$from}` `{$to}`";
+            if ($this->driver === 'pgsql') {
+                $this->columns[] = 'RENAME COLUMN ' . $this->q($from) . ' TO ' . $this->q($to);
+            } else {
+                // MySQL RENAME COLUMN (8.0+); fallback note for older versions
+                $this->columns[] = 'RENAME COLUMN ' . $this->q($from) . ' TO ' . $this->q($to);
+            }
         }
         return $this;
     }
     
     public function toSql()
     {
+        // Separate inline vs. separate-statement indexes (pgsql CREATE INDEX)
+        $inlineIndexes = [];
+        $separateIndexes = [];
+        foreach ($this->indexes as $idx) {
+            if (strpos($idx, '__SEPARATE__') === 0) {
+                $separateIndexes[] = substr($idx, strlen('__SEPARATE__'));
+            } else {
+                $inlineIndexes[] = $idx;
+            }
+        }
+        
         if ($this->type === 'create') {
-            $sql = "CREATE TABLE IF NOT EXISTS `{$this->table}` (";
+            $tableQ = $this->q($this->table);
+            $sql = "CREATE TABLE IF NOT EXISTS {$tableQ} (";
             $sql .= implode(', ', $this->columns);
             
-            if (!empty($this->indexes)) {
-                $sql .= ', ' . implode(', ', $this->indexes);
+            if (!empty($inlineIndexes)) {
+                $sql .= ', ' . implode(', ', $inlineIndexes);
             }
             
             if (!empty($this->foreignKeys)) {
-                $keys = [];
-                foreach ($this->foreignKeys as $fk) {
-                    $keys[] = $fk->toSql();
-                }
+                $keys = array_map(fn($fk) => $fk->toSql(), $this->foreignKeys);
                 $sql .= ', ' . implode(', ', $keys);
             }
             
-            $sql .= ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
+            $sql .= ')';
+            
+            // MySQL-specific table options
+            if ($this->driver === 'mysql') {
+                $sql .= ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
+            }
+            
+            // Append separate CREATE INDEX statements (pgsql)
+            if (!empty($separateIndexes)) {
+                $sql .= '; ' . implode('; ', $separateIndexes);
+            }
             
             return $sql;
         } else {
             // ALTER TABLE
-            $alterations = [];
-            
-            foreach ($this->columns as $column) {
-                if (strpos($column, 'DROP COLUMN') === 0) {
-                    $alterations[] = $column;
-                } elseif (strpos($column, 'CHANGE COLUMN') === 0) {
-                    $alterations[] = $column;
-                } else {
-                    $alterations[] = "ADD COLUMN " . $column;
-                }
-            }
-            
-            if (empty($alterations)) {
+            if (empty($this->columns)) {
                 return '';
             }
             
-            return "ALTER TABLE `{$this->table}` " . implode(', ', $alterations);
+            $tableQ = $this->q($this->table);
+            $alterations = [];
+            
+            foreach ($this->columns as $column) {
+                if (strpos($column, 'DROP COLUMN') === 0 || strpos($column, 'RENAME COLUMN') === 0) {
+                    $alterations[] = $column;
+                } else {
+                    $alterations[] = 'ADD COLUMN ' . $column;
+                }
+            }
+            
+            $sql = "ALTER TABLE {$tableQ} " . implode(', ', $alterations);
+            
+            if (!empty($separateIndexes)) {
+                $sql .= '; ' . implode('; ', $separateIndexes);
+            }
+            
+            return $sql;
         }
-    }
-    
-    private function extractColumnName($columnDef)
-    {
-        if (preg_match('/`([^`]+)`/', $columnDef, $matches)) {
-            return $matches[1];
-        }
-        return '';
     }
 }
 
@@ -278,10 +355,20 @@ class ForeignKeyBuilder
     private $on;
     private $onDelete;
     private $onUpdate;
+    private $driver;
     
-    public function __construct($column)
+    public function __construct($column, $driver = 'mysql')
     {
         $this->column = $column;
+        $this->driver = $driver;
+    }
+    
+    private function q($identifier)
+    {
+        if ($this->driver === 'pgsql') {
+            return '"' . str_replace('"', '""', $identifier) . '"';
+        }
+        return '`' . str_replace('`', '', $identifier) . '`';
     }
     
     public function references($column)
@@ -310,14 +397,15 @@ class ForeignKeyBuilder
     
     public function toSql()
     {
-        $sql = "FOREIGN KEY (`{$this->column}`) REFERENCES `{$this->on}` (`{$this->references}`)";
+        $sql = 'FOREIGN KEY (' . $this->q($this->column) . ')'
+             . ' REFERENCES ' . $this->q($this->on) . ' (' . $this->q($this->references) . ')';
         
         if ($this->onDelete) {
-            $sql .= " ON DELETE {$this->onDelete}";
+            $sql .= ' ON DELETE ' . $this->onDelete;
         }
         
         if ($this->onUpdate) {
-            $sql .= " ON UPDATE {$this->onUpdate}";
+            $sql .= ' ON UPDATE ' . $this->onUpdate;
         }
         
         return $sql;
@@ -327,22 +415,55 @@ class ForeignKeyBuilder
 class MigrationManager
 {
     private $connection;
+    private $driver;
     private $table = 'migrations';
     
     public function __construct($connection)
     {
         $this->connection = $connection;
+        try {
+            $this->driver = $connection->getAttribute(PDO::ATTR_DRIVER_NAME);
+        } catch (\Exception $e) {
+            $this->driver = 'mysql';
+        }
         $this->ensureMigrationsTable();
+    }
+    
+    private function q($identifier)
+    {
+        if ($this->driver === 'pgsql') {
+            return '"' . str_replace('"', '""', $identifier) . '"';
+        }
+        return '`' . str_replace('`', '', $identifier) . '`';
     }
     
     private function ensureMigrationsTable()
     {
-        $sql = "CREATE TABLE IF NOT EXISTS `{$this->table}` (
-            `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            `migration` VARCHAR(255) NOT NULL,
-            `batch` INT UNSIGNED NOT NULL,
-            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+        $t = $this->q($this->table);
+        
+        if ($this->driver === 'pgsql') {
+            $sql = "CREATE TABLE IF NOT EXISTS {$t} (
+                id SERIAL PRIMARY KEY,
+                migration VARCHAR(255) NOT NULL,
+                batch INT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )";
+        } elseif ($this->driver === 'sqlite') {
+            $sql = "CREATE TABLE IF NOT EXISTS {$t} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                migration VARCHAR(255) NOT NULL,
+                batch INT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )";
+        } else {
+            // MySQL
+            $sql = "CREATE TABLE IF NOT EXISTS {$t} (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                `migration` VARCHAR(255) NOT NULL,
+                `batch` INT UNSIGNED NOT NULL,
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+        }
         
         $this->connection->exec($sql);
     }
@@ -361,7 +482,6 @@ class MigrationManager
         foreach ($migrations as $migration) {
             $instance = $this->loadMigration($migration);
             $instance->up();
-            
             $this->recordMigration($migration, $batch);
             $ran[] = $migration;
         }
@@ -382,7 +502,6 @@ class MigrationManager
         foreach (array_reverse($migrations) as $migration) {
             $instance = $this->loadMigration($migration['migration']);
             $instance->down();
-            
             $this->deleteMigration($migration['id']);
             $rolledBack[] = $migration['migration'];
         }
@@ -390,17 +509,34 @@ class MigrationManager
         return ['rolled_back' => $rolledBack];
     }
     
+    public function status()
+    {
+        $ran = $this->getRanMigrations();
+        $all = $this->getAllMigrations();
+        
+        $result = [];
+        foreach ($all as $migration) {
+            $result[] = [
+                'migration' => $migration,
+                'ran'       => in_array($migration, $ran),
+            ];
+        }
+        
+        return $result;
+    }
+    
     private function getPendingMigrations()
     {
         $ran = $this->getRanMigrations();
         $all = $this->getAllMigrations();
         
-        return array_diff($all, $ran);
+        return array_values(array_diff($all, $ran));
     }
     
     private function getRanMigrations()
     {
-        $stmt = $this->connection->query("SELECT migration FROM `{$this->table}`");
+        $t = $this->q($this->table);
+        $stmt = $this->connection->query("SELECT migration FROM {$t}");
         return $stmt->fetchAll(PDO::FETCH_COLUMN);
     }
     
@@ -416,8 +552,9 @@ class MigrationManager
         $migrations = [];
         
         foreach ($files as $file) {
-            if (preg_match('/^(\d{4}_\d{2}_\d{2}_\d{6}_)(.+?)\.php$/', $file, $matches)) {
-                $migrations[] = $matches[2];
+            // Support format: 0001_migration_name.php
+            if (preg_match('/^(\d{4}_)(.+?)\.php$/', $file, $matches)) {
+                $migrations[] = $matches[1] . $matches[2]; // e.g. "0001_users"
             }
         }
         
@@ -427,51 +564,58 @@ class MigrationManager
     
     private function loadMigration($migration)
     {
-        $files = glob(BASE_PATH . "/database/migrations/*_{$migration}.php");
+        // Migration name is the filename stem, e.g. "0001_users"
+        $file = BASE_PATH . "/database/migrations/{$migration}.php";
         
-        if (empty($files)) {
-            throw new \Exception("Migration file not found: {$migration}");
+        if (!file_exists($file)) {
+            throw new \Exception("Migration file not found: {$file}");
         }
         
-        require_once $files[0];
+        require_once $file;
         
-        $class = "App\\Database\\Migrations\\{$migration}";
+        // Convert "0001_users" → class name "Migration_0001_Users"
+        $parts = explode('_', $migration);
+        $className = 'Migration_' . implode('_', array_map('ucfirst', $parts));
         
-        if (!class_exists($class)) {
-            throw new \Exception("Migration class not found: {$class}");
+        if (!class_exists($className)) {
+            throw new \Exception("Migration class not found: {$className} (in {$file})");
         }
         
-        return new $class($this->connection);
+        return new $className($this->connection);
     }
     
     private function getNextBatchNumber()
     {
-        $stmt = $this->connection->query("SELECT MAX(batch) as max_batch FROM `{$this->table}`");
+        $t = $this->q($this->table);
+        $stmt = $this->connection->query("SELECT MAX(batch) as max_batch FROM {$t}");
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        return ($result['max_batch'] ?? 0) + 1;
+        return ((int)($result['max_batch'] ?? 0)) + 1;
     }
     
     private function recordMigration($migration, $batch)
     {
+        $t = $this->q($this->table);
         $stmt = $this->connection->prepare(
-            "INSERT INTO `{$this->table}` (migration, batch) VALUES (?, ?)"
+            "INSERT INTO {$t} (migration, batch) VALUES (?, ?)"
         );
         $stmt->execute([$migration, $batch]);
     }
     
     private function getLastBatchMigrations($steps)
     {
-        $stmt = $this->connection->query(
-            "SELECT id, migration FROM `{$this->table}` ORDER BY batch DESC, id DESC LIMIT ?"
+        $t = $this->q($this->table);
+        // Fix: use prepare() not query() so the LIMIT placeholder binds correctly
+        $stmt = $this->connection->prepare(
+            "SELECT id, migration FROM {$t} ORDER BY batch DESC, id DESC LIMIT ?"
         );
-        $stmt->execute([$steps]);
+        $stmt->execute([(int)$steps]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     
     private function deleteMigration($id)
     {
-        $stmt = $this->connection->prepare("DELETE FROM `{$this->table}` WHERE id = ?");
+        $t = $this->q($this->table);
+        $stmt = $this->connection->prepare("DELETE FROM {$t} WHERE id = ?");
         $stmt->execute([$id]);
     }
 }
-

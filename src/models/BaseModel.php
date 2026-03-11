@@ -20,6 +20,9 @@ abstract class BaseModel
     protected static $poolSize = 10;
     protected static $activeConnections = 0;
     
+    // Cached database driver name (mysql|pgsql|sqlite)
+    protected static $dbDriver = null;
+    
     // Query cache for repeated queries
     protected static $queryCache = [];
     protected static $queryCacheEnabled = true;
@@ -100,6 +103,7 @@ abstract class BaseModel
             }
             
             self::$activeConnections++;
+            self::$dbDriver = $config['driver'];
             return $connection;
             
         } catch (PDOException $e) {
@@ -588,31 +592,47 @@ abstract class BaseModel
         ];
     }
     
+    // Connection held open for the duration of a transaction.
+    protected static $transactionConnection = null;
+    
     /**
-     * Begin transaction
+     * Begin transaction — pins one connection for the whole transaction.
      */
     public function beginTransaction()
     {
-        $connection = self::getConnection();
-        return $connection->beginTransaction();
+        if (self::$transactionConnection !== null) {
+            throw new \Exception('A transaction is already in progress.');
+        }
+        self::$transactionConnection = self::getConnection();
+        return self::$transactionConnection->beginTransaction();
     }
     
     /**
-     * Commit transaction
+     * Commit transaction and release the pinned connection.
      */
     public function commit()
     {
-        $connection = self::getConnection();
-        return $connection->commit();
+        if (self::$transactionConnection === null) {
+            throw new \Exception('No active transaction to commit.');
+        }
+        $result = self::$transactionConnection->commit();
+        self::releaseConnection(self::$transactionConnection);
+        self::$transactionConnection = null;
+        return $result;
     }
     
     /**
-     * Rollback transaction
+     * Rollback transaction and release the pinned connection.
      */
     public function rollback()
     {
-        $connection = self::getConnection();
-        return $connection->rollBack();
+        if (self::$transactionConnection === null) {
+            throw new \Exception('No active transaction to roll back.');
+        }
+        $result = self::$transactionConnection->rollBack();
+        self::releaseConnection(self::$transactionConnection);
+        self::$transactionConnection = null;
+        return $result;
     }
     
     /**
@@ -647,15 +667,26 @@ abstract class BaseModel
     }
     
     /**
-     * Escape identifier (table/column name)
+     * Escape identifier (table/column name) — driver-aware
      */
     protected function escapeIdentifier($identifier)
     {
-        // Remove backticks if present
-        $identifier = str_replace('`', '', $identifier);
+        $driver = self::$dbDriver;
+        if ($driver === null) {
+            // Fall back to config if driver not yet cached
+            $dbConfig = require CONFIG_PATH . '/database.php';
+            $driver = $dbConfig['default'];
+        }
         
-        // Add backticks for MySQL
-        return "`{$identifier}`";
+        if ($driver === 'pgsql') {
+            // PostgreSQL uses double-quotes; escape existing double-quotes by doubling them
+            $identifier = str_replace('"', '""', $identifier);
+            return '"' . $identifier . '"';
+        }
+        
+        // MySQL / SQLite use backtick quoting
+        $identifier = str_replace('`', '', $identifier);
+        return '`' . $identifier . '`';
     }
     
     /**

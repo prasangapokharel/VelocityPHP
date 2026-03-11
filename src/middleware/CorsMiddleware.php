@@ -9,7 +9,7 @@
 
 namespace App\Middleware;
 
-class CorsMiddleware
+class CorsMiddleware implements MiddlewareInterface
 {
     private $allowedOrigins;
     private $allowedMethods;

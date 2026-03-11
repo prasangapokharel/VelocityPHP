@@ -103,7 +103,9 @@ class Validator
                 break;
                 
             case 'integer':
-                if ($value && !is_int((int)$value) || (string)(int)$value !== (string)$value) {
+                // !is_int((int)$value) is always false (cast always succeeds).
+                // Use string comparison: (string)(int)$value must equal the original string.
+                if ($value !== null && $value !== '' && (string)(int)$value !== (string)$value) {
                     $this->addError($field, 'integer');
                 }
                 break;
@@ -169,15 +171,15 @@ class Validator
         $messages = [
             'required' => "The {$field} field is required.",
             'email' => "The {$field} must be a valid email address.",
-            'min' => "The {$field} must be at least {$params['min']} characters.",
-            'max' => "The {$field} may not be greater than {$params['max']} characters.",
+            'min' => "The {$field} must be at least " . ($params['min'] ?? '?') . " characters.",
+            'max' => "The {$field} may not be greater than " . ($params['max'] ?? '?') . " characters.",
             'numeric' => "The {$field} must be a number.",
             'integer' => "The {$field} must be an integer.",
             'url' => "The {$field} must be a valid URL.",
             'alpha' => "The {$field} may only contain letters.",
             'alphanumeric' => "The {$field} may only contain letters and numbers.",
             'regex' => "The {$field} format is invalid.",
-            'same' => "The {$field} and {$params['other']} must match.",
+            'same' => "The {$field} and " . ($params['other'] ?? '?') . " must match.",
             'in' => "The selected {$field} is invalid."
         ];
         

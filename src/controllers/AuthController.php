@@ -24,7 +24,7 @@ class AuthController extends BaseController
             Response::redirect('/dashboard');
         }
         
-        include VIEW_PATH . '/pages/login/index.php';
+        return $this->view('login/index', [], 'Login');
     }
     
     /**
@@ -80,7 +80,7 @@ class AuthController extends BaseController
             Response::redirect('/dashboard');
         }
         
-        include VIEW_PATH . '/pages/register/index.php';
+        return $this->view('register/index', [], 'Register');
     }
     
     /**
@@ -117,8 +117,8 @@ class AuthController extends BaseController
             'status' => 'active'
         ]);
         
-        // Auto login
-        Auth::login($data['email'], $data['password']);
+        // Auto-login using ID to avoid the sleep(1) brute-force delay in Auth::login().
+        Auth::loginById($userId);
         
         return $this->jsonSuccess('Registration successful', [
             'user' => Auth::user(),

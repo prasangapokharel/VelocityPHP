@@ -67,9 +67,15 @@ abstract class BaseController
      */
     protected function view($viewPath, $data = [], $title = null)
     {
-        $viewFile = VIEW_PATH . '/pages/' . $viewPath . '.php';
+        // Prefer nested structure (pages/foo/index.php), fallback to flat (pages/foo.php)
+        $nestedFile = VIEW_PATH . '/pages/' . $viewPath . '/index.php';
+        $flatFile   = VIEW_PATH . '/pages/' . $viewPath . '.php';
         
-        if (!file_exists($viewFile)) {
+        if (is_file($nestedFile)) {
+            $viewFile = $nestedFile;
+        } elseif (is_file($flatFile)) {
+            $viewFile = $flatFile;
+        } else {
             return $this->jsonError('View not found', [], 404);
         }
         

@@ -208,8 +208,11 @@ class Security
             $key = getenv('APP_KEY') ?: 'default-key-change-in-production';
         }
         
+        // Derive a 32-byte key regardless of the raw key length.
+        // openssl_encrypt silently truncates/pads keys that are not exactly 32 bytes.
+        $derivedKey = hash('sha256', $key, true);
         $iv = random_bytes(16);
-        $encrypted = openssl_encrypt($data, 'AES-256-CBC', $key, 0, $iv);
+        $encrypted = openssl_encrypt($data, 'AES-256-CBC', $derivedKey, 0, $iv);
         return base64_encode($iv . $encrypted);
     }
     
@@ -222,10 +225,12 @@ class Security
             $key = getenv('APP_KEY') ?: 'default-key-change-in-production';
         }
         
+        // Derive the same 32-byte key used during encryption.
+        $derivedKey = hash('sha256', $key, true);
         $data = base64_decode($data);
         $iv = substr($data, 0, 16);
         $encrypted = substr($data, 16);
-        return openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
+        return openssl_decrypt($encrypted, 'AES-256-CBC', $derivedKey, 0, $iv);
     }
 }
 

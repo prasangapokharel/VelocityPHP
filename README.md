@@ -346,7 +346,7 @@ class ApiController extends BaseController
 
 ## Configuration
 
-Copy `.env.example` to `.env` and update your settings:
+Copy `.env.velocity.example` to `.env.velocity` and update your settings:
 
 ```env
 APP_NAME=VelocityPHP

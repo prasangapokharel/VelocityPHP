@@ -124,12 +124,9 @@ class RouteCollection
         }
         
         self::$routes[] = $route;
-        
-        // Register named route
-        if ($route->getName()) {
-            self::$namedRoutes[$route->getName()] = $route;
-        }
-        
+        // Named-route registration is handled lazily by Route::name()
+        // via RouteCollection::registerNamed() to ensure the name is set
+        // before it is stored (name() is chained after addRoute() returns).
         return $route;
     }
     
@@ -240,6 +237,14 @@ class RouteCollection
         }
         
         return null;
+    }
+    
+    /**
+     * Register a named route. Called by Route::name() at chain time.
+     */
+    public static function registerNamed($name, $route)
+    {
+        self::$namedRoutes[$name] = $route;
     }
     
     public static function url($name, $parameters = [])

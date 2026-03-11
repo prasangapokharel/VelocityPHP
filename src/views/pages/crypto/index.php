@@ -11,30 +11,37 @@
         $preferred = ['usd', 'usd_market_cap', 'usd_24h_change', 'last_updated_at'];
 
         // Helper to format numeric values
-        function fmt_number($n)
-        {
-            if ($n === null || $n === '') return '-';
-            if (!is_numeric($n)) return htmlspecialchars((string)$n);
-            $n = (float)$n;
-            if (abs($n) >= 1) {
-                return number_format($n, 2, '.', ',');
+        // Guards prevent "function already defined" if the view is included twice.
+        if (!function_exists('fmt_number')) {
+            function fmt_number($n)
+            {
+                if ($n === null || $n === '') return '-';
+                if (!is_numeric($n)) return htmlspecialchars((string)$n);
+                $n = (float)$n;
+                if (abs($n) >= 1) {
+                    return number_format($n, 2, '.', ',');
+                }
+                // for small values show more precision
+                return rtrim(rtrim(number_format($n, 8, '.', ','), '0'), '.');
             }
-            // for small values show more precision
-            return rtrim(rtrim(number_format($n, 8, '.', ','), '0'), '.');
         }
 
-        function fmt_marketcap($n)
-        {
-            if ($n === null || $n === '') return '-';
-            if (!is_numeric($n)) return htmlspecialchars((string)$n);
-            return number_format((float)$n, 2, '.', ',');
+        if (!function_exists('fmt_marketcap')) {
+            function fmt_marketcap($n)
+            {
+                if ($n === null || $n === '') return '-';
+                if (!is_numeric($n)) return htmlspecialchars((string)$n);
+                return number_format((float)$n, 2, '.', ',');
+            }
         }
 
-        function fmt_change($n)
-        {
-            if ($n === null || $n === '') return '-';
-            if (!is_numeric($n)) return htmlspecialchars((string)$n);
-            return round($n, 4) . '%';
+        if (!function_exists('fmt_change')) {
+            function fmt_change($n)
+            {
+                if ($n === null || $n === '') return '-';
+                if (!is_numeric($n)) return htmlspecialchars((string)$n);
+                return round($n, 4) . '%';
+            }
         }
         ?>
 

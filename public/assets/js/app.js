@@ -420,22 +420,30 @@
          * Bind events for dynamically loaded content
          */
         bindDynamicEvents: function() {
-            // Execute any inline scripts in the newly loaded content
+            // Re-execute only *inline* scripts from AJAX-loaded content.
+            // Scripts with an external src are skipped to prevent XSS via
+            // attacker-controlled src attributes in server responses.
             const $content = $(this.config.contentSelector);
             $content.find('script').each(function() {
-                try {
-                    // Create a new script element and execute it
-                    const script = document.createElement('script');
-                    if (this.src) {
+                if (this.src) {
+                    // Only allow same-origin script src values; skip all others.
+                    try {
+                        const scriptUrl = new URL(this.src, window.location.origin);
+                        if (scriptUrl.hostname !== window.location.hostname) {
+                            return; // Skip cross-origin scripts
+                        }
+                        const script = document.createElement('script');
                         script.src = this.src;
-                    } else {
+                        document.head.appendChild(script);
+                        setTimeout(() => script.remove(), 500);
+                    } catch (e) { /* ignore malformed src */ }
+                } else {
+                    try {
+                        const script = document.createElement('script');
                         script.textContent = this.textContent;
-                    }
-                    document.body.appendChild(script);
-                    // Clean up
-                    setTimeout(() => script.remove(), 100);
-                } catch (e) {
-                    console.error('Script execution error:', e);
+                        document.head.appendChild(script);
+                        document.head.removeChild(script);
+                    } catch (e) { /* silent */ }
                 }
             });
             
@@ -448,13 +456,11 @@
          */
         isExternalLink: function(url) {
             if (!url) return false;
-            
+            // Parse via a temporary anchor so the browser resolves relative URLs.
+            // An external link is one whose hostname differs from the current page.
             const link = document.createElement('a');
             link.href = url;
-            
-            return link.hostname !== window.location.hostname ||
-                   url.startsWith('http://') ||
-                   url.startsWith('https://');
+            return link.hostname !== '' && link.hostname !== window.location.hostname;
         },
 
         /**

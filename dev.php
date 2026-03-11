@@ -96,10 +96,10 @@ if (is_resource($sock)) {
 }
 echo $c['green'] . "✓ Port {$port} available\n" . $c['reset'];
 
-// ── .env check ────────────────────────────────────────────────────────────────
-$envFile = __DIR__ . '/.env';
+// ── .env.velocity check ────────────────────────────────────────────────────────
+$envFile = __DIR__ . '/.env.velocity';
 if (!file_exists($envFile)) {
-    echo $c['yellow'] . "⚠  No .env file found. Copy .env.example → .env before starting.\n" . $c['reset'];
+    echo $c['yellow'] . "⚠  No .env.velocity file found. Copy .env.velocity.example → .env.velocity before starting.\n" . $c['reset'];
 }
 
 // ── Write the dev router script ───────────────────────────────────────────────

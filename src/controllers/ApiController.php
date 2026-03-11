@@ -10,6 +10,7 @@ namespace App\Controllers;
 
 use App\Models\UserModel;
 use App\Utils\VelocityCache;
+use App\Utils\FileUpload;
 
 class ApiController extends BaseController
 {
@@ -262,6 +263,35 @@ class ApiController extends BaseController
         } catch (\Exception $e) {
             return $this->jsonError('Failed to delete user: ' . $e->getMessage(), [], 500);
         }
+    }
+    
+    /**
+     * File upload endpoint  POST /api/upload
+     *
+     * Accepts a multipart/form-data POST with a 'file' field.
+     * Optional POST fields:
+     *   max_size  (bytes, default 5 MB)
+     *
+     * Returns JSON: { success, message, url, filename, size }
+     */
+    public function upload($params, $isAjax)
+    {
+        $maxSize = (int)($this->post('max_size') ?: 5 * 1024 * 1024);
+
+        $result = FileUpload::upload('file', [
+            'maxSize'    => $maxSize,
+            'randomName' => true,
+        ]);
+
+        if (!$result['success']) {
+            return $this->jsonError($result['message'], [], 422);
+        }
+
+        return $this->jsonSuccess('File uploaded successfully', [
+            'url'      => $result['url'],
+            'filename' => $result['filename'],
+            'size'     => $result['size'],
+        ]);
     }
     
     /**

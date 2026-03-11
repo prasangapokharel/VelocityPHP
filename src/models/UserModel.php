@@ -13,8 +13,8 @@ class UserModel extends BaseModel
 {
     protected $table = 'users';
     protected $primaryKey = 'id';
-    protected $fillable = ['name', 'email', 'password', 'role', 'status'];
-    protected $timestamps = false; // Set to true if your users table has created_at/updated_at columns
+    protected $fillable = ['name', 'email', 'password', 'role', 'status', 'last_login'];
+    protected $timestamps = true;
     
     /**
      * Find user by email

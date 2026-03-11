@@ -9,7 +9,7 @@
 
 namespace App\Middleware;
 
-class RateLimitMiddleware
+class RateLimitMiddleware implements MiddlewareInterface
 {
     private $maxRequests;
     private $windowSeconds;

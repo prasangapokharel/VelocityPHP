@@ -29,12 +29,19 @@ class QueryBuilder
     private $type = 'select';
     private $insertData = [];
     private $updateData = [];
+    private $driver = 'mysql';
     
     public function __construct($connection, $table = null)
     {
         $this->connection = $connection;
         $this->table = $table;
         $this->from = $table;
+        // Detect driver from the PDO connection
+        try {
+            $this->driver = $connection->getAttribute(\PDO::ATTR_DRIVER_NAME);
+        } catch (\Exception $e) {
+            $this->driver = 'mysql';
+        }
     }
     
     public static function table($connection, $table)
@@ -428,6 +435,10 @@ class QueryBuilder
     
     private function escapeIdentifier($identifier)
     {
+        if ($this->driver === 'pgsql') {
+            return '"' . str_replace('"', '""', $identifier) . '"';
+        }
+        // MySQL / SQLite
         return '`' . str_replace('`', '``', $identifier) . '`';
     }
 }

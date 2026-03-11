@@ -195,6 +195,13 @@ if ($isAjax) {
 // CSRF Protection
 // ============================================================================
 
+// Always ensure a CSRF token exists BEFORE we validate it.
+// Without this, the very first POST on a fresh session would fail with 403
+// because the token hasn't been generated yet.
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 if (in_array($requestMethod, ['POST', 'PUT', 'PATCH', 'DELETE'])) {
     // Validate CSRF for ALL state-changing requests (AJAX and regular forms)
     $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] 
@@ -202,7 +209,7 @@ if (in_array($requestMethod, ['POST', 'PUT', 'PATCH', 'DELETE'])) {
               ?? $_POST['csrf_token'] 
               ?? '';
     
-    if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrfToken)) {
+    if (!hash_equals($_SESSION['csrf_token'], $csrfToken)) {
         if ($isAjax) {
             http_response_code(403);
             header('Content-Type: application/json; charset=UTF-8');
@@ -212,11 +219,6 @@ if (in_array($requestMethod, ['POST', 'PUT', 'PATCH', 'DELETE'])) {
         http_response_code(403);
         die('403 Forbidden: CSRF token validation failed.');
     }
-}
-
-// Generate CSRF token if not exists
-if (!isset($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
 // ============================================================================

@@ -30,6 +30,9 @@ class Route
     public function name($name)
     {
         $this->name = $name;
+        // Register immediately into RouteCollection so named routes are
+        // always stored even though ->name() is chained after addRoute().
+        RouteCollection::registerNamed($name, $this);
         return $this;
     }
     

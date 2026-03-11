@@ -27,11 +27,9 @@ class Autoloader
         spl_autoload_register([__CLASS__, 'load']);
         self::$registered = true;
         
-        // Pre-load class map cache file if exists
-        $cacheFile = BASE_PATH . '/src/cache/classmap.php';
-        if (file_exists($cacheFile)) {
-            self::$classMap = require $cacheFile;
-        }
+        // Class map is populated at runtime as classes are discovered.
+        // The static file cache (src/cache/classmap.php) was removed because
+        // the directory never existed; runtime discovery is fast enough.
     }
     
     /**
@@ -69,8 +67,15 @@ class Autoloader
         // Get the relative class name
         $relativeClass = substr($class, $len);
         
-        // Replace namespace separators with directory separators
-        $file = $baseDir . str_replace('\\', '/', $relativeClass) . '.php';
+        // Replace namespace separators with directory separators.
+        // On Linux/shared hosting the src/ subdirectories are all lowercase
+        // (controllers/, models/, utils/, etc.) but the class name keeps its
+        // original casing (e.g. HomeController.php).
+        // Strategy: lowercase every path *segment* except the final filename.
+        $relParts   = explode('/', str_replace('\\', '/', $relativeClass));
+        $className  = array_pop($relParts);                        // keep original case
+        $dirParts   = array_map('strtolower', $relParts);          // lowercase dirs
+        $file = $baseDir . ($dirParts ? implode('/', $dirParts) . '/' : '') . $className . '.php';
         
         // Optimized path resolution with early file check
         if (file_exists($file)) {
@@ -104,7 +109,7 @@ class Autoloader
         }
         
         // Utils directory check
-        $utilsFiles = ['Router.php', 'Autoloader.php', 'View.php', 'Request.php', 'Response.php', 'Validator.php', 'Security.php', 'Session.php', 'Route.php', 'RouteCollection.php', 'VelocityCache.php', 'Logger.php', 'Debug.php', 'Auth.php'];
+        $utilsFiles = ['Router.php', 'Autoloader.php', 'View.php', 'Request.php', 'Response.php', 'Validator.php', 'Security.php', 'Session.php', 'Route.php', 'RouteCollection.php', 'VelocityCache.php', 'Logger.php', 'Debug.php', 'Auth.php', 'FileUpload.php'];
         if (in_array($filename, $utilsFiles)) {
             $file = $baseDir . 'utils/' . $filename;
             if (file_exists($file)) {

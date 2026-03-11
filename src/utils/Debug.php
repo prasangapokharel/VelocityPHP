@@ -374,7 +374,11 @@ class Debug
                     <div class="error-type"><?php echo htmlspecialchars($type); ?></div>
                     <div class="error-message"><?php echo htmlspecialchars($message); ?></div>
                     <div class="error-location">
-                        <span>📁 <?php echo htmlspecialchars($file); ?></span>
+                        <span>📁 <?php
+                            // Strip the absolute server root from the path so it is never exposed.
+                            $displayFile = defined('BASE_PATH') ? str_replace(BASE_PATH, '[root]', $file) : basename($file);
+                            echo htmlspecialchars($displayFile);
+                        ?></span>
                         <span>📍 Line <?php echo $line; ?></span>
                         <span>⏰ <?php echo date('Y-m-d H:i:s'); ?></span>
                     </div>

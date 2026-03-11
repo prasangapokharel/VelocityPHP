@@ -608,6 +608,13 @@ class Router
             header('Content-Type: text/html; charset=UTF-8');
         }
         
+        // If content is already a complete HTML document (e.g. standalone error pages),
+        // output it directly — wrapping it in the layout would produce a double DOCTYPE.
+        $trimmed = ltrim($content);
+        if (stripos($trimmed, '<!DOCTYPE') === 0 || stripos($trimmed, '<html') === 0) {
+            return $content;
+        }
+        
         $layoutFile = VIEW_PATH . '/layouts/main.php';
         
         ob_start();
