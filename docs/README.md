@@ -51,7 +51,7 @@ git clone https://github.com/prasangapokharel/VelocityPHP.git
 cd VelocityPHP
 cp .env.velocity.example .env.velocity   # edit with your credentials
 php migrate.php                          # run DB migrations
-php start.php                            # start dev server on port 8001
+php start.php                            # start dev server on port 8000
 ```
 
 ### Option B — Zip upload (shared hosting)
@@ -94,14 +94,14 @@ If your host does not allow changing the document root:
 ## Local Development
 
 ```bash
-# Start the built-in dev server (port 8001, doc root = public/)
+# Start the built-in dev server (port 8000, doc root = public/)
 php start.php
 
 # Or use the alternative dev launcher
 php dev.php
 ```
 
-The server listens on `http://localhost:8001`.
+The server listens on `http://localhost:8000`.
 
 ---
 

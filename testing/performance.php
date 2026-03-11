@@ -7,7 +7,7 @@
  *   php testing/performance.php
  *
  * Requires a running MySQL server with the velocity database and a live
- * HTTP server on port 8001 (php start.php).
+ * HTTP server on port 8000 (php start.php).
  */
 
 declare(strict_types=1);
@@ -225,9 +225,9 @@ $results[] = bench('Raw SELECT COUNT(*)', function () use ($user) {
 printTable($results);
 
 // ─── 5. HTTP Response Times (live server) ─────────────────────────────────────
-head('5. HTTP Response Times (http://localhost:8001)');
+head('5. HTTP Response Times (http://localhost:8000)');
 
-$baseUrl  = 'http://localhost:8001';
+$baseUrl  = 'http://localhost:8000';
 $httpRows = [];
 
 $endpoints = [
@@ -246,7 +246,7 @@ if ($probe['status'] > 0 && $probe['error'] === '') {
 }
 
 if (!$serverUp) {
-    echo "  [SKIP] HTTP server not reachable on port 8001. Start with: php start.php\n";
+    echo "  [SKIP] HTTP server not reachable on port 8000. Start with: php start.php\n";
 } else {
     foreach ($endpoints as [$method, $path]) {
         // Take the median of 5 requests to reduce noise

@@ -202,14 +202,14 @@ Visit `https://yourdomain.com` — the framework should boot. If you see a blank
 ## Quick Start
 
 ```bash
-# Start the built-in PHP development server (port 8001, doc-root = public/)
+# Start the built-in PHP development server (port 8000, doc-root = public/)
 php start.php
 
 # Alternative dev server with auto-reload
 php dev.php
 ```
 
-Open your browser at `http://localhost:8001`.
+Open your browser at `http://localhost:8000`.
 
 ---
 
@@ -276,7 +276,7 @@ VelocityPHP/
 ├── src/velocache/           # SQLite cache store (must be writable)
 ├── .env.velocity.example    # Environment config template — copy to .env.velocity
 ├── composer.json
-└── start.php                # Dev server launcher (port 8001)
+└── start.php                # Dev server launcher (port 8000)
 ```
 
 ---

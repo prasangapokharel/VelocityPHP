@@ -6,7 +6,7 @@
  * For development with debug output, use: php dev.php
  *
  * Usage:
- *   php start.php            # Start on default port 8001
+ *   php start.php            # Start on default port 8000
  *   php start.php 9000       # Start on custom port
  *
  * @package VelocityPHP
@@ -15,7 +15,7 @@
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 $host         = 'localhost';
-$port         = isset($argv[1]) && ctype_digit($argv[1]) ? (int) $argv[1] : 8001;
+$port         = isset($argv[1]) && ctype_digit($argv[1]) ? (int) $argv[1] : 8000;
 $documentRoot = __DIR__ . '/public';
 $serverUrl    = "http://{$host}:{$port}";
 
