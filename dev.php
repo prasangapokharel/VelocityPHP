@@ -25,10 +25,31 @@ ini_set('display_startup_errors', '1');
 error_reporting(E_ALL);
 
 // ── Configuration ─────────────────────────────────────────────────────────────
-$host         = 'localhost';
+$host         = '0.0.0.0';
 $port         = isset($argv[1]) && ctype_digit($argv[1]) ? (int) $argv[1] : 8000;
 $documentRoot = __DIR__ . '/public';
-$serverUrl    = "http://{$host}:{$port}";
+$serverUrl    = "http://localhost:{$port}";
+
+// ── Detect local network IP ───────────────────────────────────────────────────
+function velocityGetLocalIp(): ?string {
+    $sock = @stream_socket_client('udp://8.8.8.8:80', $errno, $errstr, 1);
+    if ($sock) {
+        $addr = stream_socket_get_name($sock, false);
+        fclose($sock);
+        if ($addr && ($ip = strstr($addr, ':', true)) && $ip !== '0.0.0.0') {
+            return $ip;
+        }
+    }
+    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        $out = shell_exec('powershell -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notmatch \'^127\' } | Select-Object -First 1).IPAddress" 2>nul');
+    } else {
+        $out = shell_exec("hostname -I 2>/dev/null | awk '{print $1}'");
+    }
+    $ip = trim((string)$out);
+    return ($ip && filter_var($ip, FILTER_VALIDATE_IP)) ? $ip : null;
+}
+$localIp   = velocityGetLocalIp();
+$networkUrl = $localIp ? "http://{$localIp}:{$port}" : null;
 
 // ── Terminal colours (Windows + Unix compatible) ──────────────────────────────
 $c = [
@@ -67,11 +88,17 @@ if (version_compare($phpVer, '7.4.0', '>=')) {
 }
 
 // ── Required extension check ──────────────────────────────────────────────────
-$required = ['pdo', 'json', 'mbstring', 'sqlite3'];
+$required = ['pdo', 'json', 'mbstring'];
 $missing  = array_filter($required, fn($e) => !extension_loaded($e));
 if ($missing) {
     echo $c['red'] . "Missing extensions: " . implode(', ', $missing) . "\n" . $c['reset'];
     exit(1);
+}
+
+// sqlite3 is used for VelocityCache — warn if missing but don't exit
+if (!extension_loaded('sqlite3')) {
+    echo $c['yellow'] . "⚠  sqlite3 not loaded — VelocityCache (SQLite) disabled.\n" .
+         "   Install php-sqlite3 to enable page caching.\n" . $c['reset'];
 }
 
 // ── Recommended extension status ─────────────────────────────────────────────
@@ -80,6 +107,10 @@ echo "\n" . $c['blue'] . "Extensions:\n" . $c['reset'];
 foreach ($required as $ext) {
     echo "  " . $c['green'] . "✓ " . $c['reset'] . str_pad($ext, 12) . " (required)\n";
 }
+// sqlite3 is optional
+$hasSqlite = extension_loaded('sqlite3');
+echo "  " . ($hasSqlite ? $c['green'] . "✓ " : $c['yellow'] . "– ") . $c['reset'];
+echo str_pad('sqlite3', 12) . ($hasSqlite ? "(optional — cache)\n" : "not loaded (optional — cache disabled)\n");
 foreach ($recommended as $ext) {
     $ok = extension_loaded($ext);
     echo "  " . ($ok ? $c['green'] . "✓ " : $c['yellow'] . "– ") . $c['reset'];
@@ -88,7 +119,7 @@ foreach ($recommended as $ext) {
 
 // ── Port availability check ───────────────────────────────────────────────────
 echo "\n";
-$sock = @fsockopen($host, $port, $errno, $errstr, 1);
+$sock = @fsockopen('127.0.0.1', $port, $errno, $errstr, 1);
 if (is_resource($sock)) {
     fclose($sock);
     echo $c['red'] . "Port {$port} is already in use. Try: php dev.php <other-port>\n" . $c['reset'];
@@ -219,7 +250,10 @@ echo "\n";
 echo $c['blue'] . "┌────────────────────────────────────────────────────────────────┐\n" . $c['reset'];
 $rows = [
     "Mode"        => $c['magenta'] . "DEVELOPMENT  (errors visible, debug ON)" . $c['reset'],
-    "URL"         => $c['green']   . $c['bold'] . $serverUrl . $c['reset'],
+    "Local"       => $c['green']   . $c['bold'] . $serverUrl . $c['reset'],
+    "Network"     => $networkUrl
+                         ? $c['green'] . $c['bold'] . $networkUrl . $c['reset']
+                         : $c['yellow'] . "unavailable" . $c['reset'],
     "Root"        => $c['yellow']  . $documentRoot . $c['reset'],
     "PHP"         => $c['cyan']    . $phpVer . $c['reset'],
     "Live Reload" => $c['green']   . "enabled  (SSE /__livereload)" . $c['reset'],
@@ -262,7 +296,7 @@ echo $c['green'] . $c['bold'] . str_repeat("═", 66) . "\n\n" . $c['reset'];
 chdir($documentRoot);
 $cmd = sprintf(
     'php -S %s:%d -t %s %s',
-    escapeshellarg($host),
+    escapeshellarg('0.0.0.0'),
     $port,
     escapeshellarg($documentRoot),
     escapeshellarg($routerPath)

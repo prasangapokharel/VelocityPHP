@@ -57,6 +57,12 @@ class VelocityCache
     
     private function initDatabase()
     {
+        // If sqlite3 extension is not loaded, disable cache gracefully
+        if (!extension_loaded('sqlite3') && !in_array('sqlite', PDO::getAvailableDrivers())) {
+            $this->enabled = false;
+            return;
+        }
+
         try {
             $dir = dirname($this->cacheLocation);
             

@@ -14,10 +14,33 @@
  */
 
 // ── Configuration ─────────────────────────────────────────────────────────────
-$host         = 'localhost';
+$host         = '0.0.0.0';
 $port         = isset($argv[1]) && ctype_digit($argv[1]) ? (int) $argv[1] : 8000;
 $documentRoot = __DIR__ . '/public';
-$serverUrl    = "http://{$host}:{$port}";
+$serverUrl    = "http://localhost:{$port}";
+
+// ── Detect local network IP ───────────────────────────────────────────────────
+function velocityGetLocalIp(): ?string {
+    // Method 1: stream_socket_client UDP trick (no sockets extension needed)
+    $sock = @stream_socket_client('udp://8.8.8.8:80', $errno, $errstr, 1);
+    if ($sock) {
+        $addr = stream_socket_get_name($sock, false);
+        fclose($sock);
+        if ($addr && ($ip = strstr($addr, ':', true)) && $ip !== '0.0.0.0') {
+            return $ip;
+        }
+    }
+    // Method 2: OS command fallback
+    if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+        $out = shell_exec('powershell -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notmatch \'^127\' } | Select-Object -First 1).IPAddress" 2>nul');
+    } else {
+        $out = shell_exec("hostname -I 2>/dev/null | awk '{print $1}'");
+    }
+    $ip = trim((string)$out);
+    return ($ip && filter_var($ip, FILTER_VALIDATE_IP)) ? $ip : null;
+}
+$localIp   = velocityGetLocalIp();
+$networkUrl = $localIp ? "http://{$localIp}:{$port}" : null;
 
 // ── Terminal colours (Windows + Unix compatible) ──────────────────────────────
 $colors = [
@@ -60,12 +83,18 @@ if (version_compare($phpVersion, $requiredVersion, '>=')) {
 }
 
 // ── Required extensions ───────────────────────────────────────────────────────
-$requiredExtensions = ['pdo', 'json', 'mbstring', 'sqlite3'];
+$requiredExtensions = ['pdo', 'json', 'mbstring'];
 $missingExtensions  = array_filter($requiredExtensions, fn($e) => !extension_loaded($e));
 
 if (!empty($missingExtensions)) {
     echo $colors['red'] . "Missing required extensions: " . implode(', ', $missingExtensions) . "\n" . $colors['reset'];
     exit(1);
+}
+
+// sqlite3 is used for VelocityCache — warn if missing but don't exit
+if (!extension_loaded('sqlite3')) {
+    echo $colors['yellow'] . "⚠  sqlite3 extension not loaded — VelocityCache (SQLite) will be disabled.\n" .
+         "   Page caching will fall back to no-cache mode. Install php-sqlite3 to enable it.\n" . $colors['reset'];
 }
 
 // ── Recommended extensions ────────────────────────────────────────────────────
@@ -82,7 +111,7 @@ foreach ($recommendedExtensions as $ext) {
 
 // ── Port availability check ───────────────────────────────────────────────────
 echo "\n" . $colors['blue'] . "Checking port availability...\n" . $colors['reset'];
-$connection = @fsockopen($host, $port, $errno, $errstr, 1);
+$connection = @fsockopen('127.0.0.1', $port, $errno, $errstr, 1);
 
 if (is_resource($connection)) {
     fclose($connection);
@@ -116,7 +145,10 @@ echo $colors['blue'] . "┌─────────────────�
 $rows = [
     "Framework"  => $colors['cyan'] . $colors['bold'] . "VelocityPHP v1.1.0" . $colors['reset'],
     "Mode"       => $colors['magenta'] . "Production" . $colors['reset'],
-    "URL"        => $colors['green'] . $colors['bold'] . $serverUrl . $colors['reset'],
+    "Local"      => $colors['green'] . $colors['bold'] . $serverUrl . $colors['reset'],
+    "Network"    => $networkUrl
+                        ? $colors['green'] . $colors['bold'] . $networkUrl . $colors['reset']
+                        : $colors['yellow'] . "unavailable" . $colors['reset'],
     "Root"       => $colors['yellow'] . $documentRoot . $colors['reset'],
 ];
 foreach ($rows as $label => $value) {
@@ -154,7 +186,7 @@ echo $colors['green'] . $colors['bold'] . str_repeat("═", 66) . "\n\n" . $colo
 chdir($documentRoot);
 $command = sprintf(
     'php -S %s:%d -t %s',
-    escapeshellarg($host),
+    escapeshellarg('0.0.0.0'),
     $port,
     escapeshellarg($documentRoot)
 );
