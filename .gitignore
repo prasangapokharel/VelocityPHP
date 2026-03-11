@@ -19,6 +19,8 @@ node_modules/
 # Uploads
 /public/uploads/*
 !/public/uploads/.gitignore
+!/public/uploads/.gitkeep
+!/public/uploads/.htaccess
 
 # IDE
 .vscode/
@@ -53,7 +55,11 @@ nul
 *.sqlite3
 
 # Runtime / cache directories
-/storage/
+/storage/*
+!/storage/.gitkeep
+!/storage/cache
+/storage/cache/*
+!/storage/cache/.gitkeep
 /velocache/
 /.ruff_cache/
 

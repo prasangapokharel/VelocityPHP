@@ -1,0 +1,80 @@
+# VelocityPHP — Root .htaccess
+#
+# PURPOSE: This file is only needed when the PROJECT ROOT is accidentally
+# exposed as the web root (e.g., cPanel shared hosting where everything is
+# extracted directly into public_html/).
+#
+# RECOMMENDED DEPLOYMENT:
+#   Point your document root (or cPanel "public_html") to the /public
+#   sub-directory. This file is then never reached by Apache and is harmless.
+#
+# FALLBACK BEHAVIOUR (root = webroot):
+#   1. Block direct access to all sensitive directories.
+#   2. Redirect all remaining HTTP requests into /public so the framework boots.
+
+# ── Disable directory browsing everywhere ────────────────────────────────────
+Options -Indexes
+
+# ── Block sensitive directories outright ─────────────────────────────────────
+# These rules fire BEFORE the rewrite redirect so a direct hit on
+# /src/config/database.php returns 403, not a redirect.
+
+# Apache 2.4 syntax (mod_authz_core)
+<IfModule mod_authz_core.c>
+    <DirectoryMatch "^(.+/)?(src|vendor|storage|logs|database|testing|bootstrap)(/.*)?>
+        Require all denied
+    </DirectoryMatch>
+</IfModule>
+
+# Apache 2.2 fallback (mod_access_compat — present on most shared hosts too)
+<IfModule !mod_authz_core.c>
+    <DirectoryMatch "^(.+/)?(src|vendor|storage|logs|database|testing|bootstrap)(/.*)?>
+        Order deny,allow
+        Deny from all
+    </DirectoryMatch>
+</IfModule>
+
+# Block direct access to individual sensitive file types at the root level
+<FilesMatch "\.(env|env\.velocity|log|ini|conf|lock|json|md|sh|bat|cmd|sql|sqlite|phar)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Also block dot-files (e.g. .git, .env, .gitignore)
+<FilesMatch "^\.">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# ── Redirect everything else into /public ────────────────────────────────────
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Do NOT redirect requests that already start with /public
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteCond %{REQUEST_URI} !^/public$
+
+    # Allow Let's Encrypt ACME challenge through unmodified
+    RewriteCond %{REQUEST_URI} !^/\.well-known/
+
+    # Skip actual files/dirs that sit at the root (unlikely but safe)
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+
+    # Redirect the bare root URL ( / ) to /public/
+    RewriteRule ^$ /public/ [L,R=302]
+
+    # Redirect everything else: /foo/bar → /public/foo/bar
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ /public/$1 [L,R=302]
+</IfModule>

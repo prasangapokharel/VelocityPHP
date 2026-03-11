@@ -1,0 +1,37 @@
+# VelocityPHP — public/uploads/.htaccess
+#
+# This file is committed to version control so the uploads directory is
+# protected from the very first deployment, before any file is uploaded.
+# (FileUpload.php also writes this file dynamically, but it won't overwrite
+# an existing one — so this committed version always takes precedence.)
+
+# Disable directory listing
+Options -Indexes
+
+# Deny execution of any server-side script in this directory.
+# Compatible with Apache 2.4 (mod_authz_core) and Apache 2.2 (mod_access_compat).
+<FilesMatch "\.(php|php[3-9]|phtml|phar|pl|py|cgi|sh|asp|aspx|jsp)$">
+    # Apache 2.4+
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    # Apache 2.2
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Disable CGI execution
+Options -ExecCGI
+
+# Prevent .htaccess override inside this directory from being read by the browser
+<FilesMatch "^\.ht">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>

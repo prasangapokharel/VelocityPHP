@@ -1,6 +1,8 @@
-# Ignore all files in uploads
+# Ignore all uploaded files in this directory
 *
 
-# But keep this folder
+# But keep the directory skeleton and security files
 !.gitignore
+!.gitkeep
+!.htaccess
 

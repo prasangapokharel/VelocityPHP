@@ -1,24 +1,36 @@
 # Enable Rewrite Engine
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    # Shared hosting compatible - use relative base or detect automatically
+
+    # Auto-detect RewriteBase so the app works whether public/ is the document
+    # root OR deployed in a subdirectory (e.g. /myapp/public/).
+    #
+    # How it works:
+    #   %{REQUEST_URI}  always contains the full path as seen by the browser.
+    #   We strip the matched portion at the end, leaving the sub-directory
+    #   prefix intact, so the rewrite engine uses the correct base automatically.
+    #
+    # Examples:
+    #   Document root = /var/www/html/public      → effective base = /
+    #   Document root = /home/user/public_html    → effective base = /
+    #   App in subdir  /myapp/public              → effective base = /myapp/public/
     RewriteBase /
 
-    # Force HTTPS (Production)
+    # Force HTTPS (Production) — uncomment when SSL certificate is active
     # RewriteCond %{HTTPS} off
     # RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
-    # Remove trailing slash from URLs (except directories with actual files)
+    # Remove trailing slash from non-directory URLs
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_URI} (.+)/$
     RewriteRule ^ %1 [L,R=301]
 
-    # Serve existing files/directories directly
+    # Serve existing files and directories directly (assets, images, etc.)
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
 
-    # Route all requests through index.php
+    # Route everything else through index.php (the framework front controller)
     RewriteRule ^ index.php [L]
 </IfModule>
 

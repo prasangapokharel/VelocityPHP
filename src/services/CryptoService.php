@@ -13,12 +13,14 @@ class CryptoService
 
     public function __construct()
     {
-        // storage path (create if missing)
-        $this->cacheFile = realpath(__DIR__ . '/../../storage') . DIRECTORY_SEPARATOR . 'cache' . DIRECTORY_SEPARATOR . 'coingecko_cache.json';
-        $dir = dirname($this->cacheFile);
+        // Build the cache path from BASE_PATH so it is always correct regardless
+        // of whether the storage/ directory exists yet (realpath() returns false
+        // on missing directories, which would silently corrupt the path).
+        $dir = BASE_PATH . '/storage/cache';
         if (!is_dir($dir)) {
             @mkdir($dir, 0777, true);
         }
+        $this->cacheFile = $dir . '/coingecko_cache.json';
     }
 
     /**

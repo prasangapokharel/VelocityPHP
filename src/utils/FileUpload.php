@@ -95,10 +95,28 @@ class FileUpload
             }
         }
 
-        // Prevent direct PHP execution inside the upload dir
+        // Prevent direct PHP execution inside the upload dir (Apache only).
+        // On Nginx or IIS this file has no effect; configure those servers separately
+        // to deny script execution in the uploads directory.
+        // The content uses both Apache 2.4 (mod_authz_core) and 2.2 (mod_access_compat)
+        // syntax so it works on the widest range of shared hosting environments.
         $htaccess = $uploadDir . '/.htaccess';
         if (!file_exists($htaccess)) {
-            file_put_contents($htaccess, "Options -ExecCGI\nAddHandler cgi-script .php .php3 .php4 .php5 .phtml .pl .py .jsp .asp .sh .cgi\n");
+            $htaccessContent  = "# Deny direct execution of scripts in this directory.\n";
+            $htaccessContent .= "# Compatible with Apache 2.2 and 2.4.\n";
+            $htaccessContent .= "Options -ExecCGI -Indexes\n\n";
+            $htaccessContent .= "<FilesMatch \"\.(php|php[3-9]|phtml|phar|pl|py|cgi|sh|asp|aspx|jsp)$\">\n";
+            $htaccessContent .= "    # Apache 2.4+\n";
+            $htaccessContent .= "    <IfModule mod_authz_core.c>\n";
+            $htaccessContent .= "        Require all denied\n";
+            $htaccessContent .= "    </IfModule>\n";
+            $htaccessContent .= "    # Apache 2.2\n";
+            $htaccessContent .= "    <IfModule !mod_authz_core.c>\n";
+            $htaccessContent .= "        Order allow,deny\n";
+            $htaccessContent .= "        Deny from all\n";
+            $htaccessContent .= "    </IfModule>\n";
+            $htaccessContent .= "</FilesMatch>\n";
+            file_put_contents($htaccess, $htaccessContent);
         }
 
         // ── Determine filename ────────────────────────────────────────────────
