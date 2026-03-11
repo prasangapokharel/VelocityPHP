@@ -80,14 +80,16 @@
 
         /**
          * Setup CSRF token for all AJAX requests
+         * Merges with existing headers set in setupAjaxDefaults (preserves X-Requested-With)
          */
         setupCSRFToken: function() {
             const token = $('meta[name="csrf-token"]').attr('content');
             if (token) {
+                const current = $.ajaxSettings.headers || {};
                 $.ajaxSetup({
-                    headers: {
+                    headers: $.extend({}, current, {
                         'X-CSRF-TOKEN': token
-                    }
+                    })
                 });
             }
         },
@@ -567,20 +569,13 @@
             },
 
             post: function(url, data) {
-                const xhr = $.ajax({
+                return $.ajax({
                     url: url,
                     method: 'POST',
                     data: JSON.stringify(data),
                     contentType: 'application/json',
                     dataType: 'json'
                 });
-                
-                xhr.always(function() {
-                    if (typeof DEBUG_MODE !== 'undefined' && DEBUG_MODE) {
-                    }
-                });
-                
-                return xhr;
             },
 
             put: function(url, data) {

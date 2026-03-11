@@ -12,4 +12,6 @@ use App\Utils\RouteCollection;
 // Core routes
 RouteCollection::get('/', 'HomeController@index')->name('home');
 RouteCollection::get('/about', 'HomeController@about')->name('about');
+// Crypto prices
+RouteCollection::get('/crypto', 'CryptoController@index')->name('crypto');
 

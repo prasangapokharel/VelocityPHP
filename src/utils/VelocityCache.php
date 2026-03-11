@@ -179,7 +179,8 @@ class VelocityCache
             }
             
             $now = time();
-            $expiresAt = $now + $ttl;
+            // TTL of 0 means "cache forever" — use PHP_INT_MAX as the expiry
+            $expiresAt = ($ttl === 0) ? PHP_INT_MAX : $now + $ttl;
             $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             
             $putStmt->execute([$key, $encoded, $expiresAt, $now, $now]);

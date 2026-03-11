@@ -37,10 +37,10 @@
     </div>
     
     <!-- Scripts - Optimized loading -->
+    <!-- jQuery must be fully parsed before app.js runs; load it synchronously -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js" 
             integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" 
-            crossorigin="anonymous"
-            defer></script>
+            crossorigin="anonymous"></script>
     <?php 
     // Cache app config to avoid repeated requires
     static $appConfigCache = null;
@@ -51,6 +51,7 @@
     ?>
     <script>
         window.DEBUG_MODE = <?php echo ($appConfig['debug'] ?? false) ? 'true' : 'false'; ?>;
+        window.PRELOAD_ROUTES = <?php echo json_encode($appConfig['ajax']['preload_routes'] ?? []); ?>;
     </script>
     <script src="/assets/js/app.js" defer></script>
     

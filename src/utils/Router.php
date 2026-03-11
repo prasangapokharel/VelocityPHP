@@ -91,17 +91,17 @@ class Router
             
             // Extract view path from controller@method
             if (is_string($action) && strpos($action, '@') !== false) {
-                list($controller, $method) = explode('@', $action);
+                list($controllerClass, $actionName) = explode('@', $action);
                 
                 // Map controller method to view path
                 // HomeController@prasanga -> index/prasanga
                 // HomeController@index -> index/index
-                if (strtolower($controller) === 'homecontroller') {
-                    $viewPath = 'index/' . strtolower($method);
+                if (strtolower($controllerClass) === 'homecontroller') {
+                    $viewPath = 'index/' . strtolower($actionName);
                 } else {
                     // For other controllers, use controller name as directory
-                    $controllerName = str_replace('Controller', '', $controller);
-                    $viewPath = strtolower($controllerName) . '/' . strtolower($method);
+                    $controllerName = str_replace('Controller', '', $controllerClass);
+                    $viewPath = strtolower($controllerName) . '/' . strtolower($actionName);
                 }
                 
                 // Render the view using the determined path

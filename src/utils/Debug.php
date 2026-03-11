@@ -15,23 +15,48 @@ class Debug
     private static $errorLog = [];
     
     /**
-     * Display beautiful error page with deep analysis
-     * Accepts Throwable (Exception or Error)
+     * Read the debug flag from config or APP_DEBUG env var.
+     */
+    private static function isDebugMode(): bool
+    {
+        // Config takes priority if already loaded
+        if (defined('CONFIG_PATH') && file_exists(CONFIG_PATH . '/app.php')) {
+            static $cfg = null;
+            if ($cfg === null) {
+                $cfg = require CONFIG_PATH . '/app.php';
+            }
+            return (bool) ($cfg['debug'] ?? false);
+        }
+
+        // Fallback: raw env var (set by dev.php)
+        $env = getenv('APP_DEBUG');
+        return $env !== false && strtolower($env) !== 'false' && $env !== '0';
+    }
+
+    /**
+     * Display beautiful error page with deep analysis.
+     * In debug mode → verbose page with code snippet + stack trace.
+     * In production  → clean, user-friendly page.
      */
     public static function showError(\Throwable $exception, $isAjax = false)
     {
         self::$errorCount++;
         self::logError($exception);
-        
-        // Always show clean errors - never verbose debug pages
-        // This ensures a perfectly clean system
+
+        $debug      = self::isDebugMode();
+        $deepErrors = $debug; // show deep details whenever debug is on
+
         if ($isAjax) {
-            return self::getAjaxError($exception, false, false);
+            return self::getAjaxError($exception, $debug, $deepErrors);
         }
-        
+
+        if ($debug) {
+            return self::getHtmlErrorVerbose($exception, $debug, $deepErrors);
+        }
+
         return self::getHtmlError($exception, false, false);
     }
-    
+
     /**
      * Get AJAX error response with deep details
      */
@@ -75,8 +100,8 @@ class Debug
     }
     
     /**
-     * OLD VERBOSE DEBUG CODE - REMOVED FOR CLEAN ERRORS
-     * This code is kept for reference but never executed
+     * Get verbose HTML error page — shown in debug/development mode.
+     * Includes code snippet, full stack trace, request info and context.
      */
     private static function getHtmlErrorVerbose(\Throwable $exception, $debug, $deepErrors)
     {
@@ -507,30 +532,19 @@ class Debug
     }
     
     /**
-     * Get production error page - clean and simple
+     * Get production error page — clean, user-friendly, standalone.
      */
     private static function getProductionError()
     {
-        // Use the clean error page from views
+        // 500.php is now a full standalone page (own DOCTYPE + styles)
         $errorFile = VIEW_PATH . '/errors/500.php';
         if (is_file($errorFile)) {
             ob_start();
             include $errorFile;
-            $content = ob_get_clean();
-            
-            // Wrap in layout - but skip debug panel on error pages
-            $layoutFile = VIEW_PATH . '/layouts/main.php';
-            if (is_file($layoutFile)) {
-                ob_start();
-                $title = 'Error - VelocityPhp';
-                $skipDebugPanel = true; // Don't show debug panel on error pages
-                include $layoutFile;
-                return ob_get_clean();
-            }
-            return $content;
+            return ob_get_clean();
         }
-        
-        // Fallback simple error
+
+        // Hardcoded fallback (in case VIEW_PATH is not yet defined)
         ob_start();
         ?>
         <!DOCTYPE html>
@@ -538,61 +552,23 @@ class Debug
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Error - VelocityPhp</title>
+            <title>Error &mdash; VelocityPHP</title>
             <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    background: #f5f5f5;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    min-height: 100vh;
-                    padding: 2rem;
-                }
-                .error-container {
-                    background: white;
-                    padding: 3rem;
-                    border-radius: 12px;
-                    text-align: center;
-                    max-width: 500px;
-                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                }
-                .logo {
-                    font-size: 3rem;
-                    margin-bottom: 1rem;
-                }
-                h1 {
-                    font-size: 2rem;
-                    color: #1e293b;
-                    margin-bottom: 1rem;
-                }
-                p {
-                    color: #64748b;
-                    margin-bottom: 2rem;
-                    line-height: 1.6;
-                }
-                .btn {
-                    display: inline-block;
-                    padding: 0.75rem 1.5rem;
-                    background: #1e293b;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 6px;
-                    font-weight: 600;
-                    transition: background 0.2s;
-                }
-                .btn:hover {
-                    background: #334155;
-                }
+                *{box-sizing:border-box;margin:0;padding:0}
+                body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem}
+                .c{background:#fff;border-radius:12px;padding:3rem;text-align:center;max-width:440px;box-shadow:0 4px 24px rgba(0,0,0,.08)}
+                h1{font-size:1.5rem;color:#1e293b;margin-bottom:.75rem}
+                p{color:#64748b;line-height:1.65;margin-bottom:2rem}
+                a{display:inline-block;padding:.65rem 1.4rem;background:#1e293b;color:#fff;text-decoration:none;border-radius:8px;font-weight:600}
+                a:hover{background:#334155}
             </style>
         </head>
         <body>
-            <div class="error-container">
-                <div class="logo">⚡</div>
+            <div class="c">
+                <div style="font-size:3rem;margin-bottom:1rem">⚠️</div>
                 <h1>Something went wrong</h1>
-                <p>We're sorry, but something unexpected happened. Please try again later.</p>
-                <a href="/" class="btn">Go Home</a>
+                <p>We&rsquo;re sorry, but something unexpected happened. Please try again later.</p>
+                <a href="/">Go Home</a>
             </div>
         </body>
         </html>

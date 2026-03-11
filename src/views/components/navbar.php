@@ -19,6 +19,11 @@
                         About
                     </a>
                 </li>
+                <li>
+                    <a href="/crypto" class="nav-link" data-page="/crypto">
+                        Crypto
+                    </a>
+                </li>
             </ul>
             
             <div class="flex gap-sm items-center">

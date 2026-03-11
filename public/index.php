@@ -61,9 +61,9 @@ define('CONFIG_PATH', SRC_PATH . '/config');
 // Environment Configuration
 // ============================================================================
 
-// Load environment variables from .env file
-if (file_exists(BASE_PATH . '/.env')) {
-    $lines = file(BASE_PATH . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+// Load environment variables from .env.velocity file
+if (file_exists(BASE_PATH . '/.env.velocity')) {
+    $lines = file(BASE_PATH . '/.env.velocity', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     foreach ($lines as $line) {
         // Skip comments
         if (strpos(trim($line), '#') === 0) continue;

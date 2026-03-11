@@ -49,7 +49,7 @@ class Config
     
     public static function loadEnv($file = null)
     {
-        $file = $file ?? BASE_PATH . '/.env';
+        $file = $file ?? BASE_PATH . '/.env.velocity';
         
         if (!file_exists($file)) {
             return;

@@ -67,7 +67,7 @@ return [
     // AJAX settings
     'ajax' => [
         'cache_routes' => true,
-        'preload_routes' => ['/dashboard', '/profile'],
+        'preload_routes' => ['/', '/about', '/crypto'],
         'transition_duration' => 200, // milliseconds - optimized for speed
         'enable_history' => true,
         'enable_prefetch' => true

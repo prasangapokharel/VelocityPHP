@@ -41,6 +41,25 @@ desktop.ini
 *.temp
 *.bak
 *.old
+*.zip
+
+# Windows artifacts
+nul
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Runtime / cache directories
+/storage/
+/velocache/
+/.ruff_cache/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
 
 # Build files
 /build/
