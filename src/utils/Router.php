@@ -94,14 +94,23 @@ class Router
                 list($controllerClass, $actionName) = explode('@', $action);
                 
                 // Map controller method to view path
-                // HomeController@prasanga -> index/prasanga
                 // HomeController@index -> index/index
+                // HomeController@about -> about/index
+                // AuthController@showLogin -> auth/showlogin (fallback to login/index via file routing)
+                $controllerName = str_replace('Controller', '', $controllerClass);
+                $actionLower    = strtolower($actionName);
+
                 if (strtolower($controllerClass) === 'homecontroller') {
-                    $viewPath = 'index/' . strtolower($actionName);
+                    // HomeController@index -> pages/index/index.php
+                    // HomeController@about -> pages/about/index.php
+                    if ($actionLower === 'index') {
+                        $viewPath = 'index/index';
+                    } else {
+                        $viewPath = $actionLower . '/index';
+                    }
                 } else {
                     // For other controllers, use controller name as directory
-                    $controllerName = str_replace('Controller', '', $controllerClass);
-                    $viewPath = strtolower($controllerName) . '/' . strtolower($actionName);
+                    $viewPath = strtolower($controllerName) . '/' . $actionLower;
                 }
                 
                 // Render the view using the determined path

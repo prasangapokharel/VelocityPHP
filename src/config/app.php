@@ -14,8 +14,9 @@ return [
     // Application environment: development, staging, production
     'env' => getenv('APP_ENV') ?: 'development',
     
-    // Debug mode (set to false in production)
-    'debug' => getenv('APP_DEBUG') !== 'false',
+    // Debug mode — true only when APP_DEBUG is explicitly 'true'/'1'/'yes'
+    // Defaults to false so production is safe without configuration.
+    'debug' => in_array(strtolower((string)getenv('APP_DEBUG')), ['true', '1', 'yes', 'on'], true),
     
     // Enable detailed logging with stack traces
     'log_level' => getenv('LOG_LEVEL') ?: 'info', // debug, info, warning, error

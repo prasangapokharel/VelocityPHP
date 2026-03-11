@@ -247,6 +247,8 @@ abstract class BaseModel
     
     /**
      * Get all records (with caching)
+     * A default limit of 1000 is applied when no limit is given to prevent
+     * unbounded full-table scans on large datasets.
      */
     public function all($orderBy = null, $limit = null)
     {
@@ -256,9 +258,8 @@ abstract class BaseModel
             $sql .= " ORDER BY " . $this->sanitizeOrderBy($orderBy);
         }
         
-        if ($limit) {
-            $sql .= " LIMIT " . (int)$limit;
-        }
+        // Apply explicit limit, or fall back to a safe default of 1000 rows.
+        $sql .= " LIMIT " . (int)($limit ?? 1000);
         
         return $this->cachedQuery($sql);
     }
@@ -378,6 +379,8 @@ abstract class BaseModel
         
         if ($this->timestamps) {
             $timestamp = date('Y-m-d H:i:s');
+        } else {
+            $timestamp = null;
         }
         
         $fields = array_keys($first);

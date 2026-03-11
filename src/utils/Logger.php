@@ -143,14 +143,14 @@ class Logger
         
         $logEntry .= str_repeat('-', 80) . "\n\n";
         
-        // Write to daily log file
+        // Write to daily log file (LOCK_EX prevents interleaved writes under concurrency)
         $logFile = self::$logPath . "app-{$date}.log";
-        file_put_contents($logFile, $logEntry, FILE_APPEND);
+        file_put_contents($logFile, $logEntry, FILE_APPEND | LOCK_EX);
         
         // Also write to error.log for errors and exceptions
         if (in_array($level, ['ERROR', 'EXCEPTION'])) {
             $errorLog = self::$logPath . 'error.log';
-            file_put_contents($errorLog, $logEntry, FILE_APPEND);
+            file_put_contents($errorLog, $logEntry, FILE_APPEND | LOCK_EX);
         }
     }
     

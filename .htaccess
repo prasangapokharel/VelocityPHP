@@ -72,9 +72,9 @@ Options -Indexes
     RewriteCond %{REQUEST_FILENAME} !-d
 
     # Redirect the bare root URL ( / ) to /public/
-    RewriteRule ^$ /public/ [L,R=302]
+    RewriteRule ^$ /public/ [L,R=301]
 
     # Redirect everything else: /foo/bar → /public/foo/bar
     RewriteCond %{REQUEST_URI} !^/public/
-    RewriteRule ^(.*)$ /public/$1 [L,R=302]
+    RewriteRule ^(.*)$ /public/$1 [L,R=301]
 </IfModule>

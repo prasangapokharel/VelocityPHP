@@ -1,3 +1,13 @@
+<?php
+// Load app config once at the top of layout so $baseUrl is available
+// everywhere in the template (CSS links, JS paths, etc.)
+static $appConfigCache = null;
+if ($appConfigCache === null) {
+    $appConfigCache = require CONFIG_PATH . '/app.php';
+}
+$appConfig = $appConfigCache;
+$baseUrl = rtrim($appConfig['url'] ?? '', '/');
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,10 +21,10 @@
     <link rel="dns-prefetch" href="https://code.jquery.com">
     <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
     <!-- Stylesheets - Load synchronously for immediate rendering -->
-    <link rel="stylesheet" href="/assets/css/theme.css">
-    <link rel="stylesheet" href="/assets/css/global.css">
+    <link rel="stylesheet" href="<?php echo $baseUrl; ?>/assets/css/theme.css">
+    <link rel="stylesheet" href="<?php echo $baseUrl; ?>/assets/css/global.css">
     <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="/assets/images/favicon.ico">
+    <link rel="icon" type="image/x-icon" href="<?php echo $baseUrl; ?>/assets/images/favicon.ico">
 
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4" defer></script>
 </head>
@@ -41,19 +51,12 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js" 
             integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" 
             crossorigin="anonymous"></script>
-    <?php 
-    // Cache app config to avoid repeated requires
-    static $appConfigCache = null;
-    if ($appConfigCache === null) {
-        $appConfigCache = require CONFIG_PATH . '/app.php';
-    }
-    $appConfig = $appConfigCache;
-    ?>
     <script>
         window.DEBUG_MODE = <?php echo ($appConfig['debug'] ?? false) ? 'true' : 'false'; ?>;
         window.PRELOAD_ROUTES = <?php echo json_encode($appConfig['ajax']['preload_routes'] ?? []); ?>;
+        window.BASE_URL = <?php echo json_encode($baseUrl); ?>;
     </script>
-    <script src="/assets/js/app.js" defer></script>
+    <script src="<?php echo $baseUrl; ?>/assets/js/app.js" defer></script>
     
     <!-- Page-specific scripts -->
     <?php if (isset($scripts)): ?>

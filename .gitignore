@@ -71,5 +71,6 @@ __pycache__/
 # Build files
 /build/
 /dist/
-
+tests/
+testing/
 .cursor/

@@ -193,28 +193,39 @@ abstract class BaseController
     }
     
     /**
-     * Get POST data (handles both form-data and JSON)
+     * Get POST data (handles form-data, JSON, and PHP raw input for PUT/DELETE)
      */
     protected function post($key = null, $default = null)
     {
-        // Check if we already parsed JSON data
-        static $jsonData = null;
-        
-        // If Content-Type is application/json, parse from php://input
-        $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
-        if (strpos($contentType, 'application/json') !== false && $jsonData === null) {
-            $input = file_get_contents('php://input');
-            $jsonData = json_decode($input, true) ?? [];
+        // Check if we already parsed the request body
+        static $parsedBody = null;
+
+        if ($parsedBody === null) {
+            $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+            $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+
+            if (strpos($contentType, 'application/json') !== false) {
+                // JSON body (any method)
+                $input = file_get_contents('php://input');
+                $parsedBody = json_decode($input, true) ?? [];
+            } elseif (in_array($method, ['PUT', 'PATCH', 'DELETE'])) {
+                // PHP does not populate $_POST for PUT/PATCH/DELETE with form-encoded bodies.
+                // Parse php://input ourselves.
+                $input = file_get_contents('php://input');
+                parse_str($input, $parsedBody);
+                if (empty($parsedBody)) {
+                    $parsedBody = $_POST; // fallback
+                }
+            } else {
+                $parsedBody = $_POST;
+            }
         }
-        
-        // Use JSON data if available, otherwise use $_POST
-        $data = $jsonData !== null ? $jsonData : $_POST;
-        
+
         if ($key === null) {
-            return $data;
+            return $parsedBody;
         }
-        
-        return $data[$key] ?? $default;
+
+        return $parsedBody[$key] ?? $default;
     }
     
     /**

@@ -36,8 +36,9 @@ class AuthController extends BaseController
         $password = $this->post('password');
         $remember = $this->post('remember') === 'on';
         
-        // Validate
-        $errors = $this->validate($_POST, [
+        // Validate using parsed post data (supports JSON and form-encoded bodies)
+        $data = $this->post();
+        $errors = $this->validate($data, [
             'email' => 'required|email',
             'password' => 'required'
         ]);

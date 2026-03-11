@@ -182,7 +182,13 @@ class Auth
         }
         
         $token = $_COOKIE[self::$rememberCookie];
-        list($selector, $validator) = explode(':', $token);
+        $parts = explode(':', $token, 2);
+        if (count($parts) !== 2 || $parts[0] === '' || $parts[1] === '') {
+            // Malformed cookie — clear it and bail
+            setcookie(self::$rememberCookie, '', time() - 3600, '/');
+            return false;
+        }
+        [$selector, $validator] = $parts;
         
         // Get token from database — use PHP date so this works on MySQL, SQLite, and PostgreSQL
         $now = date('Y-m-d H:i:s');
@@ -242,8 +248,10 @@ class Auth
         // Delete remember token
         if (isset($_COOKIE[self::$rememberCookie])) {
             $token = $_COOKIE[self::$rememberCookie];
-            list($selector) = explode(':', $token);
-            self::deleteRememberToken($selector);
+            $parts = explode(':', $token, 2);
+            if (count($parts) === 2 && $parts[0] !== '') {
+                self::deleteRememberToken($parts[0]);
+            }
             
             // Delete cookie
             setcookie(self::$rememberCookie, '', time() - 3600, '/');
@@ -319,29 +327,12 @@ class Auth
     }
     
     /**
-     * Get client IP (secure)
+     * Get client IP (secure — trusts only REMOTE_ADDR to prevent header spoofing)
      */
     private static function getIp()
     {
-        $keys = [
-            'HTTP_CLIENT_IP',
-            'HTTP_X_FORWARDED_FOR',
-            'HTTP_X_FORWARDED',
-            'HTTP_FORWARDED_FOR',
-            'HTTP_FORWARDED',
-            'REMOTE_ADDR'
-        ];
-        
-        foreach ($keys as $key) {
-            if (isset($_SERVER[$key])) {
-                $ip = $_SERVER[$key];
-                if (filter_var($ip, FILTER_VALIDATE_IP)) {
-                    return $ip;
-                }
-            }
-        }
-        
-        return '0.0.0.0';
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : '0.0.0.0';
     }
     
     /**

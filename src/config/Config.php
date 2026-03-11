@@ -175,7 +175,15 @@ class Config
             return null;
         }
         
-        $data = unserialize(file_get_contents($cacheFile));
+        // Use JSON instead of unserialize() to prevent PHP object injection attacks.
+        $raw = file_get_contents($cacheFile);
+        if ($raw === false) {
+            return null;
+        }
+        $data = json_decode($raw, true);
+        if (!is_array($data) || !isset($data['time'], $data['config'])) {
+            return null;
+        }
         
         // Check if cache is still valid (compare with source file)
         $sourceFile = CONFIG_PATH . '/' . $file . '.php';
@@ -195,7 +203,8 @@ class Config
             'config' => $config
         ];
         
-        file_put_contents($cacheFile, serialize($data));
+        // Use JSON (safe) instead of serialize() to prevent object injection.
+        file_put_contents($cacheFile, json_encode($data), LOCK_EX);
     }
     
     public static function clearCache()
