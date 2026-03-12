@@ -21,6 +21,7 @@ class AuthController extends BaseController
     {
         // Redirect if already logged in
         if (Auth::check()) {
+            if ($isAjax) return $this->jsonSuccess('Already logged in', ['redirect' => '/dashboard']);
             Response::redirect('/dashboard');
         }
         
@@ -78,6 +79,7 @@ class AuthController extends BaseController
     public function showRegister($params = [], $isAjax = false)
     {
         if (Auth::check()) {
+            if ($isAjax) return $this->jsonSuccess('Already logged in', ['redirect' => '/dashboard']);
             Response::redirect('/dashboard');
         }
         
@@ -90,6 +92,7 @@ class AuthController extends BaseController
     public function showForgotPassword($params = [], $isAjax = false)
     {
         if (Auth::check()) {
+            if ($isAjax) return $this->jsonSuccess('Already logged in', ['redirect' => '/dashboard']);
             Response::redirect('/dashboard');
         }
 

@@ -144,6 +144,11 @@
                 dataType: 'json',
                 timeout: this.config.requestTimeout,
                 success: function (response) {
+                    // Handle server-side redirect signals (e.g. already-logged-in on /login)
+                    if (response && response.redirect && !response.html) {
+                        self.navigate(response.redirect, true);
+                        return;
+                    }
                     // Cache all GET responses except auth/user-specific pages
                     if (self.config.cacheViews && !self._isPrivateRoute(url)) {
                         self.cache[url] = response;

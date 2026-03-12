@@ -34,7 +34,17 @@
             </div>
             <div class="card-content">
                 <p class="text-neutral-700 mb-sm text-sm">You are logged in.</p>
-                <a href="/logout" class="btn btn-secondary btn-sm" data-no-ajax>Logout</a>
+                <button type="button" class="btn btn-secondary btn-sm" id="logout-btn">Logout</button>
+                <script>
+                document.getElementById('logout-btn').addEventListener('click', function() {
+                    NativeApp.api.post('/logout', {}).then(function(res) {
+                        if (res && res.redirect) NativeApp.navigate(res.redirect, true);
+                        else NativeApp.navigate('/login', true);
+                    }).fail(function() {
+                        NativeApp.navigate('/login', true);
+                    });
+                });
+                </script>
             </div>
         </div>
     </div>

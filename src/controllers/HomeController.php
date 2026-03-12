@@ -15,12 +15,7 @@ class HomeController extends BaseController
      */
     public function index($params, $isAjax)
     {
-        if ($isAjax) {
-            return $this->view('index/index', [], 'Home - VelocityPhp');
-        }
-        
-        // For non-AJAX (refresh), the router handles full page rendering
-        return null;
+        return $this->view('index/index', [], 'Home - VelocityPhp');
     }
     
     /**
@@ -28,11 +23,6 @@ class HomeController extends BaseController
      */
     public function about($params, $isAjax)
     {
-        if ($isAjax) {
-            return $this->view('about/index', [], 'About - VelocityPhp');
-        }
-        
-        // For non-AJAX (refresh), the router handles full page rendering
-        return null;
+        return $this->view('about/index', [], 'About - VelocityPhp');
     }
 }
